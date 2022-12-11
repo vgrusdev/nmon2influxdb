@@ -30,6 +30,7 @@ type Nmon struct {
 	CPUtype     string
 	CPUmode     string
 	FW          string
+	uptime      string
 	TimeStamps  map[string]string
 	TextContent string
 	DataSeries  map[string]DataSerie
@@ -301,6 +302,11 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                         nmon.FW = "bmcFW" + matched[1]
                         continue
                 }
+		if uptimeRegexp.MatchString(line) {
+			matched := uptimeRegexp.FindStringSubmatch(line)
+                        nmon.uptime = matched[1]
+                        continue
+                }
 
 		//VG --
 
@@ -364,8 +370,9 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			"SMT      = %s\n" +
 			"CPUtype  = %s\n" +
 			"CPUmode  = %s\n" +
-			"FW       = %s\n",
-			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW)
+			"FW       = %s\n" +
+			"uptime   = %s\n",
+			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW, nmon.uptime)
 	}
 
 

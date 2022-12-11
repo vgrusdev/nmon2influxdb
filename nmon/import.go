@@ -66,6 +66,8 @@ var linuxbmcfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc
 var x86cpusRegexp = regexp.MustCompile(`^AAA.x86.Cores.(\d+)`)
 var x86cpumodeRegexp = regexp.MustCompile(`^AAA.x86.ModelName.*(\w{2}-\d{4})`)
 
+var uptimeRegexp = regexp.MustCompile(`^BBB.*uptime.*up\s+([\w\s:]+)`)
+
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {
 
@@ -157,7 +159,8 @@ func Import(c *cli.Context) error {
 						"FWlevel": nmon.FW,
 						"os": nmon.OS,
 						"osver": nmon.OSver,
-						"osrelease": nmon.OStl}
+						"osrelease": nmon.OStl,
+						"uptime": nmon.uptime}
 
 		// try to convert smt string to integer
 		smtfloat := 1.0
