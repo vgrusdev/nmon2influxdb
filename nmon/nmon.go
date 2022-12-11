@@ -103,8 +103,10 @@ func InitNmonTemplate(config *nmon2influxdblib.Config) (nmon *Nmon) {
 
 //InitNmon init nmon structure for nmon file import
 func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (nmon *Nmon) {
-	Xcps  := 0
-	Xsockets := 0
+	//Xcps  := 0
+	//Xsockets := 0
+	AIXcpus := "0"
+	Linuxcpus := "0"
 	nmon = NewNmon()
 	nmon.Config = config
 	if config.Debug {
@@ -180,7 +182,8 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                 }
 		if aixcpusRegexp.MatchString(line) {
 			matched := aixcpusRegexp.FindStringSubmatch(line)
-			nmon.CPUs = matched[1]
+			AIXcpus = matched[1]
+			//log.Printf("aixcpus matched. line = %s. AIXcpus = %s\n", line, AIXcpus)
 			continue
 		}
 		if aixsmtRegexp.MatchString(line) {
@@ -235,25 +238,31 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                         continue
                 }
 
-		if linuxcpsRegexp.MatchString(line) {
-                        matched := linuxcpsRegexp.FindStringSubmatch(line)
-			// try to convert string to integer
-                        converted, parseErr := strconv.Atoi(matched[1])
-                        if parseErr != nil {
-				continue
-                        }
-			Xcps = converted
-                        continue
-                }
+		//if linuxcpsRegexp.MatchString(line) {
+                //        matched := linuxcpsRegexp.FindStringSubmatch(line)
+		//	// try to convert string to integer
+                //        converted, parseErr := strconv.Atoi(matched[1])
+                //        if parseErr != nil {
+		//		continue
+                //        }
+		//	Xcps = converted
+                //        continue
+                //}
 
-		if linuxsocketsRegexp.MatchString(line) {
-                        matched := linuxsocketsRegexp.FindStringSubmatch(line)
-                        // try to convert string to integer
-                        converted, parseErr := strconv.Atoi(matched[1])
-                        if parseErr != nil {
-                                continue
-                        }
-			Xsockets = converted
+		//if linuxsocketsRegexp.MatchString(line) {
+                //        matched := linuxsocketsRegexp.FindStringSubmatch(line)
+                //        // try to convert string to integer
+                //        converted, parseErr := strconv.Atoi(matched[1])
+                //        if parseErr != nil {
+                //                continue
+                //        }
+		//	Xsockets = converted
+                //        continue
+                //}
+		if linuxcpusRegexp.MatchString(line) {
+                        matched := linuxcpusRegexp.FindStringSubmatch(line)
+                        Linuxcpus = matched[1]
+			//log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
                         continue
                 }
 
@@ -280,11 +289,6 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                         nmon.FW = "bmcFW" + matched[1]
                         continue
                 }
-
-		//if len(nmon.OS) > 0 {
-                //        tags["os"] = nmon.OS
-               // }
-
 
 		//VG --
 
@@ -328,8 +332,13 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		}
 	}
 	//VG ++
-	if Xcps > 0 {
-		nmon.CPUs = strconv.Itoa(Xcps * Xsockets)
+	//if Xcps > 0 {
+	//	nmon.CPUs = strconv.Itoa(Xcps * Xsockets)
+	//}
+	if AIXcpus == "0" {
+		nmon.CPUs = Linuxcpus
+	} else {
+		nmon.CPUs = AIXcpus
 	}
 	if config.Debug {
 		log.Printf("InitNmon results:\n" +
