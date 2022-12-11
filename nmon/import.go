@@ -44,7 +44,8 @@ var aixsmtRegexp = regexp.MustCompile(`^BBB.*smt threads.(\d+)`)
 var aixcputypeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Type:\s*(\w+)`)
 //var aixcputypeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Type:\s*([^\"]+)`)
 var aixcpumodeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Implementation.Mode:\s*([^\"]+)`)
-var aixfirmwareRegexp = regexp.MustCompile(`^BBB.*lsconf.*Firmware.Version:\s*([^\"]+)`)
+//var aixfirmwareRegexp = regexp.MustCompile(`^BBB.*lsconf.*Firmware.Version:\s*([^\"]+)`)
+var aixfirmwareRegexp = regexp.MustCompile(`^BBB.*lsconf.*Firmware.Version:\s*(IBM,)*([\w\.\d]+)`)
 
 //var linuxserialRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*01:01\s+\w+.(\w+)`)
 var linuxserialRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*\shost0.*(\w{7})`)
@@ -56,7 +57,9 @@ var linuxsocketsRegexp = regexp.MustCompile(`^BBB.*lscpu.*Socket\(s\).*(\d+)`)
 var linuxsmtRegexp = regexp.MustCompile(`^BBB.*ppc64_cpu.*smt.*SMT=(\w+)`)
 var linuxcputypeRegexp = regexp.MustCompile(`^BBB.*lscpu.*Model.name:\s*(\w+)`)
 //var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc-firmware-version-([^\"]+)`)
-var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*(Firmware\sis|firmware-version-)\s*([\w\.\d]+)`)
+var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*Firmware\sis\s*([\w\.\d]+)`)
+var linuxbmcfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc-firmware-version-\s*([\w\.\d]+)`)
+
 
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {

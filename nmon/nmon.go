@@ -204,8 +204,7 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		}
 		if aixfirmwareRegexp.MatchString(line) {
 			matched := aixfirmwareRegexp.FindStringSubmatch(line)
-			//nmon.FW = strings.ToLower(matched[1])
-			nmon.FW = matched[1]
+			nmon.FW = matched[2]
 			continue
 		}
 
@@ -273,7 +272,12 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 		if linuxfirmwareRegexp.MatchString(line) {
                         matched := linuxfirmwareRegexp.FindStringSubmatch(line)
-                        nmon.FW = matched[2]
+                        nmon.FW = matched[1]
+                        continue
+                }
+		if linuxbmcfirmwareRegexp.MatchString(line) {
+                        matched := linuxbmcfirmwareRegexp.FindStringSubmatch(line)
+                        nmon.FW = "bmcFW" + matched[1]
                         continue
                 }
 
