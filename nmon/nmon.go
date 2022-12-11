@@ -22,6 +22,14 @@ type Nmon struct {
 	Hostname    string
 	Serial      string
 	OS          string
+	OSver       string
+	OStl        string
+	MT          string
+	CPUs        string
+	SMT         string
+	CPUtype     string
+	CPUmode     string
+	FW          string
 	TimeStamps  map[string]string
 	TextContent string
 	DataSeries  map[string]DataSerie
@@ -95,6 +103,8 @@ func InitNmonTemplate(config *nmon2influxdblib.Config) (nmon *Nmon) {
 
 //InitNmon init nmon structure for nmon file import
 func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (nmon *Nmon) {
+	Xcps  := 0
+	Xsockets := 0
 	nmon = NewNmon()
 	nmon.Config = config
 	if config.Debug {
@@ -138,15 +148,141 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 		if serialRegexp.MatchString(line) {
 			matched := serialRegexp.FindStringSubmatch(line)
-			nmon.Serial = strings.ToLower(matched[1])
+			nmon.Serial = strings.ToUpper(matched[1])
 			continue
 		}
 
-		if osRegexp.MatchString(line) {
-			matched := osRegexp.FindStringSubmatch(line)
-			nmon.OS = strings.ToLower(matched[1])
+		//if osRegexp.MatchString(line) {
+		//	matched := osRegexp.FindStringSubmatch(line)
+		//	nmon.OS = strings.ToLower(matched[1])
+		//	continue
+		//}
+
+		// VG ++
+
+		if aixverRegexp.MatchString(line) {
+			matched := aixverRegexp.FindStringSubmatch(line)
+			nmon.OS = "aix"
+			nmon.OSver = strings.ToLower(matched[1])
 			continue
 		}
+
+		if aixtlRegexp.MatchString(line) {
+			matched := aixtlRegexp.FindStringSubmatch(line)
+			nmon.OStl = matched[1]
+			continue
+		}
+		if aixmtRegexp.MatchString(line) {
+                        matched := aixmtRegexp.FindStringSubmatch(line)
+                        //nmon.MT = strings.ToLower(matched[1])
+			nmon.MT = strings.ToUpper(matched[1])
+                        continue
+                }
+		if aixcpusRegexp.MatchString(line) {
+			matched := aixcpusRegexp.FindStringSubmatch(line)
+			nmon.CPUs = matched[1]
+			continue
+		}
+		if aixsmtRegexp.MatchString(line) {
+                        matched := aixsmtRegexp.FindStringSubmatch(line)
+                        nmon.SMT = matched[1]
+                        continue
+		}
+		if aixcputypeRegexp.MatchString(line) {
+			matched := aixcputypeRegexp.FindStringSubmatch(line)
+			regex := regexp.MustCompile(`(?i)PowerPC_`)
+			str := regex.ReplaceAllString(matched[1], "")
+			nmon.CPUtype = str
+			continue
+		}
+		if aixcpumodeRegexp.MatchString(line) {
+			matched := aixcpumodeRegexp.FindStringSubmatch(line)
+			regex := regexp.MustCompile(`\s+`)
+			str := regex.ReplaceAllString(matched[1], "")
+			nmon.CPUmode = str
+			continue
+		}
+		if aixfirmwareRegexp.MatchString(line) {
+			matched := aixfirmwareRegexp.FindStringSubmatch(line)
+			//nmon.FW = strings.ToLower(matched[1])
+			nmon.FW = matched[1]
+			continue
+		}
+
+		if linuxserialRegexp.MatchString(line) {
+                        matched := linuxserialRegexp.FindStringSubmatch(line)
+                        nmon.Serial = strings.ToUpper(matched[1])
+                        continue
+                }
+
+		if linuxverRegexp.MatchString(line) {
+                        matched := linuxverRegexp.FindStringSubmatch(line)
+                        //nmon.OSver = strings.ToLower(matched[1])
+                        nmon.OSver = matched[1]
+                        continue
+                }
+
+		if linuxkernelRegexp.MatchString(line) {
+                        matched := linuxkernelRegexp.FindStringSubmatch(line)
+			nmon.OS = "linux"
+                        //nmon.OStl = strings.ToLower(matched[1])
+                        nmon.OStl = matched[1]
+                        continue
+                }
+
+		if linuxmtRegexp.MatchString(line) {
+                        matched := linuxmtRegexp.FindStringSubmatch(line)
+                        nmon.MT = strings.ToUpper(matched[1])
+                        continue
+                }
+
+		if linuxcpsRegexp.MatchString(line) {
+                        matched := linuxcpsRegexp.FindStringSubmatch(line)
+			// try to convert string to integer
+                        converted, parseErr := strconv.Atoi(matched[1])
+                        if parseErr != nil {
+				continue
+                        }
+			Xcps = converted
+                        continue
+                }
+
+		if linuxsocketsRegexp.MatchString(line) {
+                        matched := linuxsocketsRegexp.FindStringSubmatch(line)
+                        // try to convert string to integer
+                        converted, parseErr := strconv.Atoi(matched[1])
+                        if parseErr != nil {
+                                continue
+                        }
+			Xsockets = converted
+                        continue
+                }
+
+		if linuxsmtRegexp.MatchString(line) {
+                        matched := linuxsmtRegexp.FindStringSubmatch(line)
+                        nmon.SMT = matched[1]
+                        continue
+                }
+
+		if linuxcputypeRegexp.MatchString(line) {
+                        matched := linuxcputypeRegexp.FindStringSubmatch(line)
+                        nmon.CPUtype = matched[1]
+			nmon.CPUmode = ""
+                        continue
+                }
+
+		if linuxfirmwareRegexp.MatchString(line) {
+                        matched := linuxfirmwareRegexp.FindStringSubmatch(line)
+                        nmon.FW = matched[2]
+                        continue
+                }
+
+		//if len(nmon.OS) > 0 {
+                //        tags["os"] = nmon.OS
+               // }
+
+
+		//VG --
 
 		if infoRegexp.MatchString(line) {
 			matched := infoRegexp.FindStringSubmatch(line)
@@ -187,6 +323,28 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			nmon.DataSeries[name] = dataserie
 		}
 	}
+	//VG ++
+	if Xcps > 0 {
+		nmon.CPUs = strconv.Itoa(Xcps * Xsockets)
+	}
+	if config.Debug {
+		log.Printf("InitNmon results:\n" +
+			"Hostname = %s\n" +
+			"Serial   = %s\n" +
+			"OS       = %s\n" +
+			"OSver    = %s\n" +
+			"OStl     = %s\n" +
+			"MT       = %s\n" +
+			"CPUs     = %s\n" +
+			"SMT      = %s\n" +
+			"CPUtype  = %s\n" +
+			"CPUmode  = %s\n" +
+			"FW       = %s\n",
+			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW)
+	}
+
+
+	//VG--
 	return
 }
 

@@ -35,6 +35,29 @@ var topRegexp = regexp.MustCompile(`^TOP.\d+.(T\d+)`)
 var nfsRegexp = regexp.MustCompile(`^NFS`)
 var nameRegexp = regexp.MustCompile(`(\d+)$`)
 
+// VG
+var aixverRegexp = regexp.MustCompile(`^AAA.AIX.(\S+)`)
+var aixtlRegexp = regexp.MustCompile(`^AAA.TL.(\d+)`)
+var aixmtRegexp = regexp.MustCompile(`^AAA.MachineType.IBM.(\S+)`)
+var aixcpusRegexp = regexp.MustCompile(`^BBB.*CPU in sys.(\d+)`)
+var aixsmtRegexp = regexp.MustCompile(`^BBB.*smt threads.(\d+)`)
+var aixcputypeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Type:\s*(\w+)`)
+//var aixcputypeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Type:\s*([^\"]+)`)
+var aixcpumodeRegexp = regexp.MustCompile(`^BBB.*lsconf.*Processor.Implementation.Mode:\s*([^\"]+)`)
+var aixfirmwareRegexp = regexp.MustCompile(`^BBB.*lsconf.*Firmware.Version:\s*([^\"]+)`)
+
+//var linuxserialRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*01:01\s+\w+.(\w+)`)
+var linuxserialRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*\shost0.*(\w{7})`)
+var linuxverRegexp = regexp.MustCompile(`^BBB.*\/etc\/\S*PRETTY_NAME=Q*([^\"Q*]+)`)
+var linuxkernelRegexp = regexp.MustCompile(`^AAA.*Linux,(\S+),`)
+var linuxmtRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*Model Name: (\S{8})`)
+var linuxcpsRegexp = regexp.MustCompile(`^BBB.*lscpu.*per.socket:\s+(\w+)`)
+var linuxsocketsRegexp = regexp.MustCompile(`^BBB.*lscpu.*Socket\(s\).*(\d+)`)
+var linuxsmtRegexp = regexp.MustCompile(`^BBB.*ppc64_cpu.*smt.*SMT=(\w+)`)
+var linuxcputypeRegexp = regexp.MustCompile(`^BBB.*lscpu.*Model.name:\s*(\w+)`)
+//var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc-firmware-version-([^\"]+)`)
+var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*(Firmware\sis|firmware-version-)\s*([\w\.\d]+)`)
+
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {
 
@@ -115,6 +138,29 @@ func Import(c *cli.Context) error {
 			}
 		}
 
+		//VG++
+		systags := map[string]string{	"host": nmon.Hostname,
+						"name": "smt",
+						"mtype": nmon.MT,
+						"serial": nmon.Serial,
+						"SysCPU": nmon.CPUs,
+						"CPUtype": nmon.CPUtype,
+						"CPUmode": nmon.CPUmode,
+						"FWlevel": nmon.FW,
+						"os": nmon.OS,
+						"osver": nmon.OSver,
+						"osrelease": nmon.OStl}
+
+		// try to convert smt string to integer
+		smtfloat := 1.0
+		converted, parseErr := strconv.ParseFloat(nmon.SMT, 64)
+                if parseErr != nil || math.IsNaN(converted) {
+                        //if not working, skip to next value. We don't want text values in InfluxDB.
+			smtfloat = 1.0
+		} else {
+			smtfloat = converted
+		}
+		//VG--
 		for _, line := range lines {
 
 			if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {
@@ -133,6 +179,14 @@ func Import(c *cli.Context) error {
 				matched := statsRegexp.FindStringSubmatch(line)
 				elems := strings.Split(line, nmonFile.Delimiter)
 				name := elems[0]
+				//VG++
+				measurement := ""
+                                if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
+					measurement = name
+				} else {
+					measurement = nameRegexp.ReplaceAllString(name, "")
+				}
+				//VG ---
 
 				if len(config.ImportSkipMetrics) > 0 {
 					if userSkipRegexp.MatchString(name) {
@@ -167,7 +221,6 @@ func Import(c *cli.Context) error {
 					}
 					column := nmon.DataSeries[name].Columns[i]
 					tags := map[string]string{"host": nmon.Hostname, "name": column}
-
 					// try to convert string to integer
 					converted, parseErr := strconv.ParseFloat(value, 64)
 					if parseErr != nil || math.IsNaN(converted) {
@@ -178,11 +231,35 @@ func Import(c *cli.Context) error {
 					//send integer if it worked
 					field := map[string]interface{}{"value": converted}
 
-					measurement := ""
-					if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
-						measurement = name
-					} else {
-						measurement = nameRegexp.ReplaceAllString(name, "")
+					//VG++
+					//measurement := ""
+					//if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
+					//	measurement = name
+					//} else {
+					//	measurement = nameRegexp.ReplaceAllString(name, "")
+					//}
+					//VG + 
+					if measurement == "CPU_ALL" {
+						if len(nmon.MT) > 0 {
+							tags["mtype"] = nmon.MT
+						}
+						if len(nmon.Serial) > 0 {
+							tags["serial"] = nmon.Serial
+						}
+						if len(nmon.SMT) > 0 {
+							tags["smt"] = nmon.SMT
+						}
+						if len(nmon.CPUs) > 0 {
+							tags["cpus_in_sys"] = nmon.CPUs
+						}
+					}
+					if measurement == "MEM" {
+						if len(nmon.MT) > 0 {
+                                                        tags["mtype"] = nmon.MT
+                                                }
+                                                if len(nmon.Serial) > 0 {
+                                                        tags["serial"] = nmon.Serial
+                                                }
 					}
 
 					// Checking additional tagging
@@ -213,6 +290,13 @@ func Import(c *cli.Context) error {
 						influxdb.ClearPoints()
 						fmt.Printf("#")
 					}
+				}
+				if measurement == "CPU_ALL" {
+
+					// write SYSINFO measurement
+                                        sysfield := map[string]interface{}{"value": smtfloat}
+
+					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
 				}
 			}
 

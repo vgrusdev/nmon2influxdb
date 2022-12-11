@@ -73,7 +73,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "nmon2influxdb"
 	app.Usage = "upload NMON stats to InfluxDB database"
-	app.Version = "2.1.7"
+	app.Version = "2.1.7_vg1"
 	app.Commands = []*cli.Command{
 		{
 			Name:  "import",
@@ -328,7 +328,8 @@ func main() {
 			Value: config.Timezone,
 		},
 	}
-	app.Authors = []*cli.Author{{Name: "Alain Dejoux", Email: "adejoux@djouxtech.net"}}
+	app.Authors = []*cli.Author{{Name: "Alain Dejoux", Email: "adejoux@djouxtech.net"},
+				    {Name: "Valery Grusdev", Email: "valery@grusdev.com"}}
 	app.Run(os.Args)
 
 }
