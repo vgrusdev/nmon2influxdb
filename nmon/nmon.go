@@ -109,6 +109,7 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 	Linuxcpus := "0"
 	nmon = NewNmon()
 	nmon.Config = config
+	nmon.CPUmode = ""
 	if config.Debug {
 		log.Printf("configuration: %+v\n", config.Sanitized())
 	}
@@ -265,6 +266,17 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			//log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
                         continue
                 }
+		if x86cpusRegexp.MatchString(line) {
+                        matched := x86cpusRegexp.FindStringSubmatch(line)
+                        Linuxcpus = matched[1]
+                        //log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
+                        continue
+                }
+		if x86cpumodeRegexp.MatchString(line) {
+                        matched := x86cpumodeRegexp.FindStringSubmatch(line)
+                        nmon.CPUmode = matched[1]
+                        continue
+                }
 
 		if linuxsmtRegexp.MatchString(line) {
                         matched := linuxsmtRegexp.FindStringSubmatch(line)
@@ -275,7 +287,7 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		if linuxcputypeRegexp.MatchString(line) {
                         matched := linuxcputypeRegexp.FindStringSubmatch(line)
                         nmon.CPUtype = matched[1]
-			nmon.CPUmode = ""
+			//nmon.CPUmode = ""
                         continue
                 }
 

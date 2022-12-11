@@ -56,12 +56,15 @@ var linuxmtRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lscfg.*Model Name: (\
 //var linuxcpsRegexp = regexp.MustCompile(`^BBB.*lscpu.*per.socket:\s+(\w+)`)
 //var linuxsocketsRegexp = regexp.MustCompile(`^BBB.*lscpu.*Socket\(s\).*(\d+)`)
 var linuxcpusRegexp = regexp.MustCompile(`^BBB.*ppc64_cpu.*cores.*Number.of.cores.present\W+(\d+)`)
-var linuxsmtRegexp = regexp.MustCompile(`^BBB.*ppc64_cpu.*smt.*SMT=(\w+)`)
+//var linuxsmtRegexp = regexp.MustCompile(`^BBB.*ppc64_cpu.*smt.*SMT=(\w+)`)
+var linuxsmtRegexp = regexp.MustCompile(`^BBB.*lscpu.*Thread.*per.core.*(\d+)`)
 var linuxcputypeRegexp = regexp.MustCompile(`^BBB.*lscpu.*Model.name:\s*(\w+)`)
 //var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc-firmware-version-([^\"]+)`)
 var linuxfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*Firmware\sis\s*([\w\.\d]+)`)
 var linuxbmcfirmwareRegexp = regexp.MustCompile(`^BBB.*ppc64_utils.*lsmcode.*bmc-firmware-version-\s*([\w\.\d]+)`)
 
+var x86cpusRegexp = regexp.MustCompile(`^AAA.x86.Cores.(\d+)`)
+var x86cpumodeRegexp = regexp.MustCompile(`^AAA.x86.ModelName.*(\w{2}-\d{4})`)
 
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {

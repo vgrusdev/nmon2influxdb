@@ -73,7 +73,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "nmon2influxdb"
 	app.Usage = "upload NMON stats to InfluxDB database"
-	app.Version = "2.1.7_vg3"
+	app.Version = "2.1.7_vg4"
 	app.Commands = []*cli.Command{
 		{
 			Name:  "import",
