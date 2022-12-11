@@ -31,6 +31,8 @@ type Nmon struct {
 	CPUmode     string
 	FW          string
 	uptime      string
+	LPARnr	    string
+	LPARname    string
 	TimeStamps  map[string]string
 	TextContent string
 	DataSeries  map[string]DataSerie
@@ -164,18 +166,39 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 		// VG ++
 
+		if viosverRegexp.MatchString(line) {
+                        matched := viosverRegexp.FindStringSubmatch(line)
+                        nmon.OS = "vios"
+			nmon.OStl = nmon.OSver
+                        nmon.OSver = strings.ToLower(matched[1])
+                        continue
+                }
 		if aixverRegexp.MatchString(line) {
 			matched := aixverRegexp.FindStringSubmatch(line)
+			if nmon.OS == "vios" {
+				nmon.OStl = strings.ToLower(matched[1])
+				continue
+			}
 			nmon.OS = "aix"
 			nmon.OSver = strings.ToLower(matched[1])
 			continue
 		}
-
 		if aixtlRegexp.MatchString(line) {
-			matched := aixtlRegexp.FindStringSubmatch(line)
-			nmon.OStl = matched[1]
-			continue
-		}
+			if nmon.OS == "vios" {
+                                continue
+                        }
+                        matched := aixtlRegexp.FindStringSubmatch(line)
+                        nmon.OStl = matched[1]
+                        continue
+                }
+
+		if lparnumbernameRegexp.MatchString(line) {
+                        matched := lparnumbernameRegexp.FindStringSubmatch(line)
+                        nmon.LPARnr = matched[1]
+			nmon.LPARname = matched[2]
+                        continue
+                }
+
 		if aixmtRegexp.MatchString(line) {
                         matched := aixmtRegexp.FindStringSubmatch(line)
                         //nmon.MT = strings.ToLower(matched[1])
@@ -229,7 +252,6 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		if linuxkernelRegexp.MatchString(line) {
                         matched := linuxkernelRegexp.FindStringSubmatch(line)
 			nmon.OS = "linux"
-                        //nmon.OStl = strings.ToLower(matched[1])
                         nmon.OStl = matched[1]
                         continue
                 }
@@ -371,8 +393,11 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			"CPUtype  = %s\n" +
 			"CPUmode  = %s\n" +
 			"FW       = %s\n" +
-			"uptime   = %s\n",
-			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW, nmon.uptime)
+			"uptime   = %s\n" +
+			"LPARnr   = %s\n" +
+			"LPARname = %s\n",
+			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW, nmon.uptime,
+			nmon.LPARnr, nmon.LPARname)
 	}
 
 

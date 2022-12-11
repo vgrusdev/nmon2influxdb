@@ -36,6 +36,8 @@ var nfsRegexp = regexp.MustCompile(`^NFS`)
 var nameRegexp = regexp.MustCompile(`(\d+)$`)
 
 // VG
+var viosverRegexp = regexp.MustCompile(`^AAA.VIOS.(\S+)`)
+var lparnumbernameRegexp = regexp.MustCompile(`^AAA.LPARNumberName.(\d+).(\S+)`)
 var aixverRegexp = regexp.MustCompile(`^AAA.AIX.(\S+)`)
 var aixtlRegexp = regexp.MustCompile(`^AAA.TL.(\d+)`)
 var aixmtRegexp = regexp.MustCompile(`^AAA.MachineType.IBM.(\S+)`)
@@ -160,7 +162,9 @@ func Import(c *cli.Context) error {
 						"os": nmon.OS,
 						"osver": nmon.OSver,
 						"osrelease": nmon.OStl,
-						"uptime": nmon.uptime}
+						"uptime": nmon.uptime,
+						"lparnr": nmon.LPARnr,
+						"lparname": nmon.LPARname}
 
 		// try to convert smt string to integer
 		smtfloat := 1.0
