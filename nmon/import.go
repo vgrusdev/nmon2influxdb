@@ -302,7 +302,27 @@ func Import(c *cli.Context) error {
 				if measurement == "CPU_ALL" {
 
 					// write SYSINFO measurement
-                                        sysfield := map[string]interface{}{"value": smtfloat}
+					sysfield := map[string]interface{}{"value": smtfloat}
+
+					// Checking additional tagging
+                                        for key, value := range systags {
+                                                if _, ok := nmon.TagParsers["SYSINFO"][key]; ok {
+                                                        for _, tagParser := range nmon.TagParsers["SYSINFO"][key] {
+                                                                if tagParser.Regexp.MatchString(value) {
+                                                                        systags[tagParser.Name] = tagParser.Value
+                                                                }
+                                                        }
+                                                }
+
+                                                if _, ok := nmon.TagParsers["_ALL"][key]; ok {
+                                                        for _, tagParser := range nmon.TagParsers["_ALL"][key] {
+                                                                if tagParser.Regexp.MatchString(value) {
+                                                                        systags[tagParser.Name] = tagParser.Value
+                                                                }
+                                                        }
+                                                }
+
+                                        }
 
 					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
 				}
