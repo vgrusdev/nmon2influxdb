@@ -305,7 +305,7 @@ func Import(c *cli.Context) error {
 						influxdb.ClearPoints()
 						fmt.Printf("#")
 					}
-				}
+				}  // for i, value := range elems[2:]
 				if measurement == "CPU_ALL" {
 
 					// write SYSINFO measurement
@@ -332,8 +332,8 @@ func Import(c *cli.Context) error {
                                         }
 
 					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
-				}
-			}
+				}  // if measurement == "CPU_ALL"
+			}  // if statsRegexp.MatchString(line)
 
 			if topRegexp.MatchString(line) {
 				matched := topRegexp.FindStringSubmatch(line)
@@ -402,8 +402,8 @@ func Import(c *cli.Context) error {
 						fmt.Printf("#")
 					}
 				}
-			}
-		}
+			}  // if topRegexp.MatchString(line)
+		}  // for _, line := range lines
 		// flushing remaining data
 		influxdb.WritePoints()
 		count += influxdb.PointsCount()

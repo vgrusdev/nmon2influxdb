@@ -129,7 +129,7 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		userSkipRegexp = regexp.MustCompile(skipped)
 	}
 	badtext := fmt.Sprintf("%s%s",nmonFile.Delimiter,nmonFile.Delimiter)
-  var badRegexp = regexp.MustCompile(badtext)
+        var badRegexp = regexp.MustCompile(badtext)
 	for _, line := range lines {
 
 		if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {
