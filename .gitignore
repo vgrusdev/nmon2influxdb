@@ -3,3 +3,5 @@ docs/public
 dist/
 nmon2influxdb
 nmon2influxdb.exe
+config.DebugFile
+nmon2influxdb.log

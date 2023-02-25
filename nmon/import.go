@@ -175,6 +175,18 @@ func Import(c *cli.Context) error {
 		} else {
 			smtfloat = converted
 		}
+
+		//type Threads map[string]Thread
+		type Thread struct {
+			MaxThreads float64
+			Cmd string
+		}
+		threads := make(map[string]Thread)
+		const TopThreads = 5
+		var currTimestamp = ""
+		//var maxThreads = 0.0
+                //var thPid = ""
+                //var thCmd = ""
 		//VG--
 		for _, line := range lines {
 
@@ -202,6 +214,89 @@ func Import(c *cli.Context) error {
 					measurement = nameRegexp.ReplaceAllString(name, "")
 				}
 				//VG ---
+
+				//VG++  maxthreads
+                                if topRegexp.MatchString(line) {
+                                      matched := topRegexp.FindStringSubmatch(line)
+				      if currTimestamp != matched[1] {
+					      if len(currTimestamp) > 0 {
+
+						      timeStr, getErr := nmon.GetTimeStamp(currTimestamp)
+						      if getErr != nil {
+                                                              continue
+                                                      }
+                                                      timestamp, convErr := nmon.ConvertTimeStamp(timeStr)
+                                                      nmon2influxdblib.CheckError(convErr)
+
+						      //tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": thPid, "command": thCmd}
+                                                      //if len(nmon.Serial) > 0 {
+						      //      tags["serial"] = nmon.Serial
+                                                      //}
+                                                      //send integer if it worked
+                                                      //field := map[string]interface{}{"value": maxThreads}
+                                                      //influxdb.AddPoint("THREAD", timestamp, field, tags)
+
+						      for key, val := range threads {
+							      tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": key, "command": val.Cmd}
+							      if len(nmon.Serial) > 0 {
+                                                                  tags["serial"] = nmon.Serial
+                                                              }
+                                                              //send integer if it worked
+                                                              field := map[string]interface{}{"value": val.MaxThreads}
+                                                              influxdb.AddPoint("THREADS", timestamp, field, tags)
+						      }
+					      }
+					      //maxThreads = 0.0
+					      currTimestamp = matched[1]
+					      //thPid = ""
+					      //thCmd = ""
+					      threads = make(map[string]Thread)
+			              }
+
+
+                                      // elems := strings.Split(line, nmonFile.Delimiter)
+                                      // name := elems[0]
+
+                                      if len(elems) < 14 {
+                                            log.Println(elems)
+                                            continue
+                                      }
+				      // try to convert string to integer
+                                      converted, parseErr := strconv.ParseFloat(elems[6], 64)
+                                      if parseErr != nil {
+                                            //if not working, skip to next value. We don't want text values in InfluxDB.
+                                            continue
+                                      }
+				      //if converted > maxThreads {
+				      //      maxThreads = converted
+				      //      thPid = elems[1]
+				      //      thCmd = elems[13]
+				      //}
+
+				      if len(threads) < TopThreads {
+					      t1 := Thread{converted, elems[13]}
+					      threads[elems[1]] = t1
+				      } else {
+					      // p, t := getMinTh(threads)
+					      minPid := "1"
+					      minThr := 0.0
+					      for k, v := range threads {
+						      if (minThr <= 0.0) || (v.MaxThreads < minThr) {
+							      minPid = k
+							      minThr = v.MaxThreads
+						      }
+					      }
+					      if converted > minThr {
+					            delete (threads, minPid)
+						    t1 := Thread{converted, elems[13]}
+						    threads[elems[1]] = t1
+					      }
+				      }
+
+				      //continue
+                                }  // if topRegexp.MatchString(line)
+
+				//VG-- maxthreads
 
 				if len(config.ImportSkipMetrics) > 0 {
 					if userSkipRegexp.MatchString(name) {

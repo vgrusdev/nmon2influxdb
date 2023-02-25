@@ -17,7 +17,7 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"sort"
+	//"sort"
 	"strings"
 
 	"github.com/pkg/sftp"
@@ -316,7 +316,7 @@ func (nmonFile *File) Content() []string {
 		scanner.Close()
 	}
 
-	sort.Strings(nmonFile.lines)
+	//sort.Strings(nmonFile.lines)
 
 	return nmonFile.lines
 }
