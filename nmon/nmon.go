@@ -42,6 +42,21 @@ type Nmon struct {
 	stoptime    time.Time
 	Location    *time.Location
 	TagParsers  nmon2influxdblib.TagParsers
+	FCs         map[string]FCstruct
+}
+type FCstruct struct {
+	wwpn        string
+	speed       string
+	att         string
+	lipcnt      string
+	noscnt      string
+	errframe    string
+	dumpframe   string
+	linkfail    string
+	losssync    string
+	losssig     string
+	invtx       string
+	invcrc      string
 }
 
 // DataSerie structure contains the columns and points to insert in InfluxDB
@@ -56,7 +71,7 @@ func (nmon *Nmon) AppendText(text string) {
 
 // NewNmon initialize a Nmon structure
 func NewNmon() *Nmon {
-	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string)}
+	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string), FCs: make(map[string]FCstruct)}
 
 }
 
@@ -330,6 +345,102 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                         continue
                 }
 
+		if aixfcwwpnRegexp.MatchString(line) {
+			matched := aixfcwwpnRegexp.FindStringSubmatch(line)
+			fcname := matched[1]
+			fcstruct := nmon.FCs[fcname]
+			fcstruct.wwpn = matched[2]
+			nmon.FCs[fcname] = fcstruct
+			continue
+		}
+		if aixfcportspeedRegexp.MatchString(line) {
+                        matched := aixfcportspeedRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.speed = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcattentionRegexp.MatchString(line) {
+                        matched := aixfcattentionRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.att = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfclipcountRegexp.MatchString(line) {
+                        matched := aixfclipcountRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.lipcnt = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcnoscountRegexp.MatchString(line) {
+                        matched := aixfcnoscountRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.noscnt = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcerrframesRegexp.MatchString(line) {
+                        matched := aixfcerrframesRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.errframe = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcdumpedframesRegexp.MatchString(line) {
+                        matched := aixfcdumpedframesRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.dumpframe = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfclinkfailureRegexp.MatchString(line) {
+                        matched := aixfclinkfailureRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.linkfail = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfclossofsyncRegexp.MatchString(line) {
+                        matched := aixfclossofsyncRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.losssync = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfclossofsignalRegexp.MatchString(line) {
+                        matched := aixfclossofsignalRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.losssig = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcinvalidtxRegexp.MatchString(line) {
+                        matched := aixfcinvalidtxRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.invtx = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
+		if aixfcinvalidcrcRegexp.MatchString(line) {
+                        matched := aixfcinvalidcrcRegexp.FindStringSubmatch(line)
+                        fcname := matched[1]
+                        fcstruct := nmon.FCs[fcname]
+                        fcstruct.invcrc = matched[2]
+                        nmon.FCs[fcname] = fcstruct
+                        continue
+                }
 		//VG --
 
 		if infoRegexp.MatchString(line) {
@@ -398,6 +509,33 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			"LPARname = %s\n",
 			nmon.Hostname, nmon.Serial, nmon.OS, nmon.OSver, nmon.OStl, nmon.MT, nmon.CPUs, nmon.SMT, nmon.CPUtype, nmon.CPUmode, nmon.FW, nmon.uptime,
 			nmon.LPARnr, nmon.LPARname)
+		for dev, devval := range nmon.FCs {
+			log.Printf("FC statisticts report:\n" +
+			"%s.wwpn        = %s\n" +
+                        "%s.speed       = %s\n" +
+                        "%s.att         = %s\n" +
+                        "%s.lipcnt      = %s\n" +
+                        "%s.noscnt      = %s\n" +
+                        "%s.errframe    = %s\n" +
+                        "%s.dumpframe   = %s\n" +
+                        "%s.linkfail    = %s\n" +
+                        "%s.losssync    = %s\n" +
+                        "%s.losssig     = %s\n" +
+                        "%s.invtx       = %s\n" +
+                        "%s.invcrc      = %s\n",
+                        dev, devval.wwpn,
+                        dev, devval.speed,
+                        dev, devval.att,
+                        dev, devval.lipcnt,
+                        dev, devval.noscnt,
+                        dev, devval.errframe,
+                        dev, devval.dumpframe,
+                        dev, devval.linkfail,
+                        dev, devval.losssync,
+                        dev, devval.losssig,
+                        dev, devval.invtx,
+                        dev, devval.invcrc)
+		}
 	}
 
 

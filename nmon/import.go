@@ -70,6 +70,19 @@ var x86cpumodeRegexp = regexp.MustCompile(`^AAA.x86.ModelName.*(\w{2}-\d{4})`)
 
 var uptimeRegexp = regexp.MustCompile(`^BBB.*uptime.*up\s+([\w\s:]+)`)
 
+var aixfcwwpnRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).World Wide Port Name\S*\s*0x(\w{16})`)
+var aixfcportspeedRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Port Speed \(running\)\S*\s*(\d+)`)
+var aixfcattentionRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Attention Type\S*\s*(.*)`)
+var aixfclipcountRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).LIP Count\S*\s*(\d+)`)
+var aixfcnoscountRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).NOS Count\S*\s*(\d+)`)
+var aixfcerrframesRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Error Frames\S*\s*(\d+)`)
+var aixfcdumpedframesRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Dumped Frames\S*\s*(\d+)`)
+var aixfclinkfailureRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Link Failure Count\S*\s*(\d+)`)
+var aixfclossofsyncRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Loss of Sync Count\S*\s*(\d+)`)
+var aixfclossofsignalRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Loss of Signal\S*\s*(\d+)`)
+var aixfcinvalidtxRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid Tx Word Count\S*\s*(\d+)`)
+var aixfcinvalidcrcRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid CRC Count\S*\s*(\d+)`)
+
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {
 
@@ -428,6 +441,68 @@ func Import(c *cli.Context) error {
 
 					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
 				}  // if measurement == "CPU_ALL"
+				if measurement == "FCREAD" {
+					// write FC adapter statistics report
+					for dev, devval := range nmon.FCs {
+						FCfields := map[string]string{
+							"speed": devval.speed,
+							"lipcnt": devval.lipcnt,
+							"noscnt": devval.noscnt,
+							"errframe": devval.errframe,
+							"dumpframe": devval.dumpframe,
+							"linkfail": devval.linkfail,
+							"losssync": devval.losssync,
+							"losssig": devval.losssig,
+							"invtx": devval.invtx,
+							"invcrc": devval.invcrc}
+
+						FCtags := map[string]string{
+							"name": "",
+							"dev": dev,
+							"wwpn": devval.wwpn,
+							"atttype": devval.att,
+							"host": nmon.Hostname,
+							"mtype": nmon.MT,
+							"serial": nmon.Serial,
+							"lparnr": nmon.LPARnr,
+                                                        "lparname": nmon.LPARname}
+
+						for fname, fval := range FCfields {
+							// 
+                                                        // try to convert smt string to integer
+                                                        fieldfloat := 0.0
+                                                        converted, parseErr := strconv.ParseFloat(fval, 64)
+                                                        if parseErr != nil || math.IsNaN(converted) {
+                                                                fieldfloat = 1.0
+                                                        } else {
+                                                                fieldfloat = converted
+							}
+							FCfield := map[string]interface{}{"value": fieldfloat}
+							FCtags["name"] = fname
+
+                                                        // Checking additional tagging
+                                                        for key, value := range systags {
+                                                                if _, ok := nmon.TagParsers["FCSTAT"][key]; ok {
+                                                                        for _, tagParser := range nmon.TagParsers["FCSTAT"][key] {
+                                                                                if tagParser.Regexp.MatchString(value) {
+                                                                                        FCtags[tagParser.Name] = tagParser.Value
+                                                                                }
+                                                                        }
+                                                                }
+
+                                                                if _, ok := nmon.TagParsers["_ALL"][key]; ok {
+                                                                        for _, tagParser := range nmon.TagParsers["_ALL"][key] {
+                                                                                if tagParser.Regexp.MatchString(value) {
+                                                                                        FCtags[tagParser.Name] = tagParser.Value
+                                                                                }
+                                                                        }
+                                                                }
+                                                        }
+
+							influxdb.AddPoint("FCSTAT", timestamp, FCfield, FCtags)
+						} // for field := range FCfields
+					} // for k := range nmon.FCs
+				} // if measurement == "FCREAD"
 			}  // if statsRegexp.MatchString(line)
 
 			if topRegexp.MatchString(line) {
