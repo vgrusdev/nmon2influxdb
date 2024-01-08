@@ -75,7 +75,7 @@ func NewNmon() *Nmon {
 
 }
 
-// BuildPoint create a point and convert string value to float when possible
+// BuildPoint create a point and convert string value to float when possible  VG - couldn't find any matches/calls for this function !!! TODO! 
 func (nmon *Nmon) BuildPoint(serie string, values []string) map[string]interface{} {
 	columns := nmon.DataSeries[serie].Columns
 	//TODO check output
@@ -107,7 +107,7 @@ func (nmon *Nmon) GetTimeStamp(label string) (timeStamp string, err error) {
 	return
 }
 
-//InitNmonTemplate init nmon structure when creating dashboard
+//InitNmonTemplate init nmon structure when creating dashboard  VG - calls from stats and dashboard !!
 func InitNmonTemplate(config *nmon2influxdblib.Config) (nmon *Nmon) {
 	nmon = NewNmon()
 	nmon.Config = config
@@ -119,7 +119,7 @@ func InitNmonTemplate(config *nmon2influxdblib.Config) (nmon *Nmon) {
 	return
 }
 
-//InitNmon init nmon structure for nmon file import
+//InitNmon init nmon structure for nmon file import  - VG - MAIN function in nmon INITIALIZATION !!!
 func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (nmon *Nmon) {
 	//Xcps  := 0
 	//Xsockets := 0
@@ -147,28 +147,28 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
         var badRegexp = regexp.MustCompile(badtext)
 	for _, line := range lines {
 
-		if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {
+		if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {	// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
+			continue													// CPU162,CPU 162 wscln2,User%,Sys%,Wait%,Idle%
+		}																// CPU162,T0001,0.0,0.0,0.0,100.0
+
+		if diskallRegexp.MatchString(line) && config.ImportSkipDisks {	// var diskallRegexp = regexp.MustCompile(`^DISK`)
 			continue
 		}
 
-		if diskallRegexp.MatchString(line) && config.ImportSkipDisks {
+		if timeRegexp.MatchString(line) {								// var timeRegexp = regexp.MustCompile(`^ZZZZ.(T\d+).(.*)$`)
+			matched := timeRegexp.FindStringSubmatch(line)				// ZZZZ,T0001,18:30:17,06-NOV-2022
+			nmon.TimeStamps[matched[1]] = matched[2]					// nmon.Timestamps["T0001"] = "18:30:17,06-NOV-2022"
 			continue
 		}
 
-		if timeRegexp.MatchString(line) {
-			matched := timeRegexp.FindStringSubmatch(line)
-			nmon.TimeStamps[matched[1]] = matched[2]
-			continue
-		}
-
-		if hostRegexp.MatchString(line) {
-			matched := hostRegexp.FindStringSubmatch(line)
+		if hostRegexp.MatchString(line) {								// var hostRegexp = regexp.MustCompile(`^AAA.host.(\S+)`)
+			matched := hostRegexp.FindStringSubmatch(line)				// AAA,host,wscln2   - only 1 match
 			nmon.Hostname = strings.ToLower(matched[1])
 			continue
 		}
 
-		if serialRegexp.MatchString(line) {
-			matched := serialRegexp.FindStringSubmatch(line)
+		if serialRegexp.MatchString(line) {								// var serialRegexp = regexp.MustCompile(`^AAA.SerialNumber.(\S+)`)
+			matched := serialRegexp.FindStringSubmatch(line)			// ^AAA.SerialNumber.(\S+)   - only 1 match
 			nmon.Serial = strings.ToUpper(matched[1])
 			continue
 		}
@@ -181,45 +181,43 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 		// VG ++
 
-		if viosverRegexp.MatchString(line) {
-                        matched := viosverRegexp.FindStringSubmatch(line)
-                        nmon.OS = "vios"
+		if viosverRegexp.MatchString(line) {							// var viosverRegexp = regexp.MustCompile(`^AAA.VIOS.(\S+)`)
+            matched := viosverRegexp.FindStringSubmatch(line)
+            nmon.OS = "vios"
 			nmon.OStl = nmon.OSver
-                        nmon.OSver = strings.ToLower(matched[1])
-                        continue
-                }
-		if aixverRegexp.MatchString(line) {
+            nmon.OSver = strings.ToLower(matched[1])
+            continue
+        }
+		if aixverRegexp.MatchString(line) {								// var aixverRegexp = regexp.MustCompile(`^AAA.AIX.(\S+)`)
 			matched := aixverRegexp.FindStringSubmatch(line)
 			if nmon.OS == "vios" {
 				nmon.OStl = strings.ToLower(matched[1])
 				continue
 			}
 			nmon.OS = "aix"
-			nmon.OSver = strings.ToLower(matched[1])
+			nmon.OSver = strings.ToLower(matched[1])					// 
 			continue
 		}
-		if aixtlRegexp.MatchString(line) {
+		if aixtlRegexp.MatchString(line) {								// var aixtlRegexp = regexp.MustCompile(`^AAA.TL.(\d+)`)
 			if nmon.OS == "vios" {
-                                continue
-                        }
-                        matched := aixtlRegexp.FindStringSubmatch(line)
-                        nmon.OStl = matched[1]
-                        continue
-                }
-
+                continue
+            }
+	        matched := aixtlRegexp.FindStringSubmatch(line)
+            nmon.OStl = matched[1]
+            continue
+        }
 		if lparnumbernameRegexp.MatchString(line) {
-                        matched := lparnumbernameRegexp.FindStringSubmatch(line)
-                        nmon.LPARnr = matched[1]
+            matched := lparnumbernameRegexp.FindStringSubmatch(line)
+            nmon.LPARnr = matched[1]
 			nmon.LPARname = matched[2]
-                        continue
-                }
-
+            continue
+        }
 		if aixmtRegexp.MatchString(line) {
-                        matched := aixmtRegexp.FindStringSubmatch(line)
-                        //nmon.MT = strings.ToLower(matched[1])
+            matched := aixmtRegexp.FindStringSubmatch(line)
+            //nmon.MT = strings.ToLower(matched[1])
 			nmon.MT = strings.ToUpper(matched[1])
-                        continue
-                }
+            continue
+        }
 		if aixcpusRegexp.MatchString(line) {
 			matched := aixcpusRegexp.FindStringSubmatch(line)
 			AIXcpus = matched[1]
@@ -227,9 +225,9 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			continue
 		}
 		if aixsmtRegexp.MatchString(line) {
-                        matched := aixsmtRegexp.FindStringSubmatch(line)
-                        nmon.SMT = matched[1]
-                        continue
+            matched := aixsmtRegexp.FindStringSubmatch(line)
+            nmon.SMT = matched[1]
+            continue
 		}
 		if aixcputypeRegexp.MatchString(line) {
 			matched := aixcputypeRegexp.FindStringSubmatch(line)
@@ -252,99 +250,92 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 		}
 
 		if linuxserialRegexp.MatchString(line) {
-                        matched := linuxserialRegexp.FindStringSubmatch(line)
-                        nmon.Serial = strings.ToUpper(matched[1])
-                        continue
-                }
-
+            matched := linuxserialRegexp.FindStringSubmatch(line)
+            nmon.Serial = strings.ToUpper(matched[1])
+            continue
+        }
 		if linuxverRegexp.MatchString(line) {
-                        matched := linuxverRegexp.FindStringSubmatch(line)
-                        //nmon.OSver = strings.ToLower(matched[1])
-                        nmon.OSver = matched[1]
-                        continue
-                }
-
+            matched := linuxverRegexp.FindStringSubmatch(line)
+            //nmon.OSver = strings.ToLower(matched[1])
+            nmon.OSver = matched[1]
+            continue
+        }
 		if linuxkernelRegexp.MatchString(line) {
-                        matched := linuxkernelRegexp.FindStringSubmatch(line)
+            matched := linuxkernelRegexp.FindStringSubmatch(line)
 			nmon.OS = "linux"
-                        nmon.OStl = matched[1]
-                        continue
-                }
-
+            nmon.OStl = matched[1]
+            continue
+        }
 		if linuxmtRegexp.MatchString(line) {
-                        matched := linuxmtRegexp.FindStringSubmatch(line)
-                        nmon.MT = strings.ToUpper(matched[1])
-                        continue
-                }
+            matched := linuxmtRegexp.FindStringSubmatch(line)
+            nmon.MT = strings.ToUpper(matched[1])
+            continue
+        }
 
 		//if linuxcpsRegexp.MatchString(line) {
-                //        matched := linuxcpsRegexp.FindStringSubmatch(line)
+        //        matched := linuxcpsRegexp.FindStringSubmatch(line)
 		//	// try to convert string to integer
-                //        converted, parseErr := strconv.Atoi(matched[1])
-                //        if parseErr != nil {
+        //        converted, parseErr := strconv.Atoi(matched[1])
+        //        if parseErr != nil {
 		//		continue
-                //        }
+        //        }
 		//	Xcps = converted
-                //        continue
-                //}
+        //        continue
+        //}
 
 		//if linuxsocketsRegexp.MatchString(line) {
-                //        matched := linuxsocketsRegexp.FindStringSubmatch(line)
-                //        // try to convert string to integer
-                //        converted, parseErr := strconv.Atoi(matched[1])
-                //        if parseErr != nil {
-                //                continue
-                //        }
+        //        matched := linuxsocketsRegexp.FindStringSubmatch(line)
+        //        // try to convert string to integer
+        //        converted, parseErr := strconv.Atoi(matched[1])
+        //        if parseErr != nil {
+        //                continue
+        //        }
 		//	Xsockets = converted
-                //        continue
-                //}
+        //        continue
+        //}
 		if linuxcpusRegexp.MatchString(line) {
-                        matched := linuxcpusRegexp.FindStringSubmatch(line)
-                        Linuxcpus = matched[1]
+            matched := linuxcpusRegexp.FindStringSubmatch(line)
+            Linuxcpus = matched[1]
 			//log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
-                        continue
-                }
+            continue
+        }
 		if x86cpusRegexp.MatchString(line) {
-                        matched := x86cpusRegexp.FindStringSubmatch(line)
-                        Linuxcpus = matched[1]
-                        //log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
-                        continue
-                }
+            matched := x86cpusRegexp.FindStringSubmatch(line)
+            Linuxcpus = matched[1]
+            //log.Printf("linuxcpus matched. line = %s. Linuxcpus = %s\n", line, Linuxcpus)
+            continue
+        }
 		if x86cpumodeRegexp.MatchString(line) {
-                        matched := x86cpumodeRegexp.FindStringSubmatch(line)
-                        nmon.CPUmode = matched[1]
-                        continue
-                }
-
+            matched := x86cpumodeRegexp.FindStringSubmatch(line)
+            nmon.CPUmode = matched[1]
+            continue
+        }
 		if linuxsmtRegexp.MatchString(line) {
-                        matched := linuxsmtRegexp.FindStringSubmatch(line)
-                        nmon.SMT = matched[1]
-                        continue
-                }
-
+            matched := linuxsmtRegexp.FindStringSubmatch(line)
+            nmon.SMT = matched[1]
+            continue
+        }
 		if linuxcputypeRegexp.MatchString(line) {
-                        matched := linuxcputypeRegexp.FindStringSubmatch(line)
-                        nmon.CPUtype = matched[1]
+            matched := linuxcputypeRegexp.FindStringSubmatch(line)
+            nmon.CPUtype = matched[1]
 			//nmon.CPUmode = ""
-                        continue
-                }
-
+            continue
+        }
 		if linuxfirmwareRegexp.MatchString(line) {
-                        matched := linuxfirmwareRegexp.FindStringSubmatch(line)
-                        nmon.FW = matched[1]
-                        continue
-                }
+            matched := linuxfirmwareRegexp.FindStringSubmatch(line)
+            nmon.FW = matched[1]
+            continue
+        }
 		if linuxbmcfirmwareRegexp.MatchString(line) {
-                        matched := linuxbmcfirmwareRegexp.FindStringSubmatch(line)
-                        nmon.FW = "bmcFW" + matched[1]
-                        continue
-                }
+            matched := linuxbmcfirmwareRegexp.FindStringSubmatch(line)
+            nmon.FW = "bmcFW" + matched[1]
+            continue
+        }
 		if uptimeRegexp.MatchString(line) {
 			matched := uptimeRegexp.FindStringSubmatch(line)
-                        nmon.uptime = matched[1]
-                        continue
-                }
-
+            nmon.uptime = matched[1]
+            continue
+        }
 		if aixfcwwpnRegexp.MatchString(line) {
 			matched := aixfcwwpnRegexp.FindStringSubmatch(line)
 			fcname := matched[1]
@@ -354,106 +345,107 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 			continue
 		}
 		if aixfcportspeedRegexp.MatchString(line) {
-                        matched := aixfcportspeedRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.speed = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcportspeedRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.speed = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcattentionRegexp.MatchString(line) {
-                        matched := aixfcattentionRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.att = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcattentionRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.att = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfclipcountRegexp.MatchString(line) {
-                        matched := aixfclipcountRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.lipcnt = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfclipcountRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.lipcnt = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcnoscountRegexp.MatchString(line) {
-                        matched := aixfcnoscountRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.noscnt = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcnoscountRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.noscnt = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcerrframesRegexp.MatchString(line) {
-                        matched := aixfcerrframesRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.errframe = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcerrframesRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.errframe = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcdumpedframesRegexp.MatchString(line) {
-                        matched := aixfcdumpedframesRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.dumpframe = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcdumpedframesRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.dumpframe = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfclinkfailureRegexp.MatchString(line) {
-                        matched := aixfclinkfailureRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.linkfail = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfclinkfailureRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.linkfail = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfclossofsyncRegexp.MatchString(line) {
-                        matched := aixfclossofsyncRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.losssync = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfclossofsyncRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.losssync = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfclossofsignalRegexp.MatchString(line) {
-                        matched := aixfclossofsignalRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.losssig = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfclossofsignalRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.losssig = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcinvalidtxRegexp.MatchString(line) {
-                        matched := aixfcinvalidtxRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.invtx = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcinvalidtxRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.invtx = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		if aixfcinvalidcrcRegexp.MatchString(line) {
-                        matched := aixfcinvalidcrcRegexp.FindStringSubmatch(line)
-                        fcname := matched[1]
-                        fcstruct := nmon.FCs[fcname]
-                        fcstruct.invcrc = matched[2]
-                        nmon.FCs[fcname] = fcstruct
-                        continue
-                }
+            matched := aixfcinvalidcrcRegexp.FindStringSubmatch(line)
+            fcname := matched[1]
+            fcstruct := nmon.FCs[fcname]
+            fcstruct.invcrc = matched[2]
+            nmon.FCs[fcname] = fcstruct
+            continue
+        }
 		//VG --
 
-		if infoRegexp.MatchString(line) {
+		if infoRegexp.MatchString(line) {								// var infoRegexp = regexp.MustCompile(`^AAA.(.*)`)
 			matched := infoRegexp.FindStringSubmatch(line)
 			nmon.AppendText(matched[1])
 			continue
 		}
 
-		if !headerRegexp.MatchString(line) {
-			if len(line) == 0 {
-				continue
-			}
-
+		if !headerRegexp.MatchString(line) {							// var headerRegexp = regexp.MustCompile(`^AAA|^BBB|^UARG|\WT\d{4,16}`)
+			if len(line) == 0 {											//  Records that describe series/
+				continue												//  Like...
+			}															//    CPU_ALL,CPU Total wscln2,User%,Sys%,Wait%,Idle%,Busy,PhysicalCPUs 
+																		//    CPU01,CPU 1 wscln2,User%,Sys%,Wait%,Idle% 
+																		//    MEM,Memory wscln2,Real Free %,Virtual free %,Real free(MB),Virtual free(MB),Real total(MB),Virtual total(MB)
 			if badRegexp.MatchString(line) {
 				continue
 			}
@@ -466,9 +458,9 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 				}
 				continue
 			}
-			name := elems[0]
-			if len(config.ImportSkipMetrics) > 0 {
-				if userSkipRegexp.MatchString(name) {
+			name := elems[0]								// Name of serie, like CPU_ALL, MEM, etc
+			if len(config.ImportSkipMetrics) > 0 {			//
+				if userSkipRegexp.MatchString(name) {		//  Skip series that are mentioned in config userSkipRegexp 
 					continue
 				}
 			}
@@ -477,11 +469,12 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 				log.Printf("Adding serie %s\n", name)
 			}
 
-			dataserie := nmon.DataSeries[name]
-			dataserie.Columns = elems[2:]
-			nmon.DataSeries[name] = dataserie
+			dataserie := nmon.DataSeries[name]				// make new dataserie -> array/slice of strings
+			dataserie.Columns = elems[2:]					//   arrays of strings - colums name
+			nmon.DataSeries[name] = dataserie				// map - [data-serie-name] -> array of colum names
 		}
-	}
+	}		// for _, line := range lines .....
+
 	//VG ++
 	//if Xcps > 0 {
 	//	nmon.CPUs = strconv.Itoa(Xcps * Xsockets)
@@ -536,12 +529,10 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
                         dev, devval.invtx,
                         dev, devval.invcrc)
 		}
-	}
-
-
+	}		// if config.Debug
 	//VG--
 	return
-}
+}			// func InitNmon(...) (nmon *Nmon)
 
 //SetTimeFrame set the current timeframe for the dashboard
 func (nmon *Nmon) SetTimeFrame() {

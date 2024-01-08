@@ -36,6 +36,7 @@ var nfsRegexp = regexp.MustCompile(`^NFS`)
 var nameRegexp = regexp.MustCompile(`(\d+)$`)
 
 // VG
+var cpuSplitRegexp = regexp.MustCompile(`^(\D+)(\d+)`)
 var viosverRegexp = regexp.MustCompile(`^AAA.VIOS.(\S+)`)
 var lparnumbernameRegexp = regexp.MustCompile(`^AAA.LPARNumberName.(\d+).(\S+)`)
 var aixverRegexp = regexp.MustCompile(`^AAA.AIX.(\S+)`)
@@ -109,13 +110,13 @@ func Import(c *cli.Context) error {
 		userSkipRegexp = regexp.MustCompile(skipped)
 	}
 
-	for _, nmonFile := range nmonFiles.Valid() {
+	for _, nmonFile := range nmonFiles.Valid() {					//  Loop per file
 
 		// store the list of metrics which was logged as skipped
 		LoggedSkippedMetrics := make(map[string]bool)
 		var count int64
 		count = 0
-		nmon := InitNmon(config, nmonFile)
+		nmon := InitNmon(config, nmonFile)							// INIT nmon for the current file
 
 		if len(config.Inputs) > 0 {
 			//Build tag parsing
@@ -182,8 +183,8 @@ func Import(c *cli.Context) error {
 		// try to convert smt string to integer
 		smtfloat := 1.0
 		converted, parseErr := strconv.ParseFloat(nmon.SMT, 64)
-                if parseErr != nil || math.IsNaN(converted) {
-                        //if not working, skip to next value. We don't want text values in InfluxDB.
+        if parseErr != nil || math.IsNaN(converted) {
+            //if not working, skip to next value. We don't want text values in InfluxDB.
 			smtfloat = 1.0
 		} else {
 			smtfloat = converted
@@ -201,113 +202,118 @@ func Import(c *cli.Context) error {
                 //var thPid = ""
                 //var thCmd = ""
 		//VG--
-		for _, line := range lines {
+		for _, line := range lines {							// lines loop !!!
 
-			if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {
+			if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {		// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
 				continue
 			}
 
-			if diskallRegexp.MatchString(line) && config.ImportSkipDisks {
+			if diskallRegexp.MatchString(line) && config.ImportSkipDisks {		// var diskallRegexp = regexp.MustCompile(`^DISK`)
 				continue
 			}
 
-			if skipRegexp.MatchString(line) {
+			if skipRegexp.MatchString(line) {									// config-defined skip regexp
 				continue
 			}
 
-			if statsRegexp.MatchString(line) {
+			// tags := map[string]string{"host": nmon.Hostname}
+
+			if statsRegexp.MatchString(line) {									// var statsRegexp = regexp.MustCompile(`\W(T\d{4,16})`)
+																				//   ZZZZ,T0001,18:30:17,06-NOV-2022
+																				//   CPU01,T0001,2.7,2.9,0.0,94.4
+																				//   MEM,T0001,32.3,96.8,126828.4,15855.2,393216.0,16384.0
+																				//   MEMNEW,T0001,55.1,4.0,8.6,32.3,11.6,56.2
+
 				matched := statsRegexp.FindStringSubmatch(line)
 				elems := strings.Split(line, nmonFile.Delimiter)
 				name := elems[0]
+
 				//VG++
 				measurement := ""
-                                if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
-					measurement = name
+                if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {		// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
+				    measurement = name													// var nfsRegexp = regexp.MustCompile(`^NFS`)
 				} else {
-					measurement = nameRegexp.ReplaceAllString(name, "")
+					measurement = nameRegexp.ReplaceAllString(name, "")					// var nameRegexp = regexp.MustCompile(`(\d+)$`)
 				}
 				//VG ---
 
 				//VG++  maxthreads
-                                if topRegexp.MatchString(line) {
-                                      matched := topRegexp.FindStringSubmatch(line)
-				      if currTimestamp != matched[1] {
-					      if len(currTimestamp) > 0 {
+                if topRegexp.MatchString(line) {
+                    matched := topRegexp.FindStringSubmatch(line)
+				    if currTimestamp != matched[1] {
+					    if len(currTimestamp) > 0 {
+						    timeStr, getErr := nmon.GetTimeStamp(currTimestamp)
+						    if getErr != nil {
+                                continue
+                            }
+                            timestamp, convErr := nmon.ConvertTimeStamp(timeStr)
+                            nmon2influxdblib.CheckError(convErr)
 
-						      timeStr, getErr := nmon.GetTimeStamp(currTimestamp)
-						      if getErr != nil {
-                                                              continue
-                                                      }
-                                                      timestamp, convErr := nmon.ConvertTimeStamp(timeStr)
-                                                      nmon2influxdblib.CheckError(convErr)
+						    //tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": thPid, "command": thCmd}
+                            //if len(nmon.Serial) > 0 {
+						    //    tags["serial"] = nmon.Serial
+                            //}
+                            //send integer if it worked
+                            //field := map[string]interface{}{"value": maxThreads}
+                            //influxdb.AddPoint("THREAD", timestamp, field, tags)
 
-						      //tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": thPid, "command": thCmd}
-                                                      //if len(nmon.Serial) > 0 {
-						      //      tags["serial"] = nmon.Serial
-                                                      //}
-                                                      //send integer if it worked
-                                                      //field := map[string]interface{}{"value": maxThreads}
-                                                      //influxdb.AddPoint("THREAD", timestamp, field, tags)
+						    for key, val := range threads {
+							    tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": key, "command": val.Cmd}
+							    if len(nmon.Serial) > 0 {
+                                    tags["serial"] = nmon.Serial
+                                }
+                                //send integer if it worked
+                                field := map[string]interface{}{"value": val.MaxThreads}
+                                influxdb.AddPoint("THREADS", timestamp, field, tags)
+						    }
+					    }
+					    //maxThreads = 0.0
+					    currTimestamp = matched[1]
+					    //thPid = ""
+					    //thCmd = ""
+					    threads = make(map[string]Thread)
+			        }
+                    // elems := strings.Split(line, nmonFile.Delimiter)
+                    // name := elems[0]
 
-						      for key, val := range threads {
-							      tags := map[string]string{"host": nmon.Hostname, "name": "maxThreads", "pid": key, "command": val.Cmd}
-							      if len(nmon.Serial) > 0 {
-                                                                  tags["serial"] = nmon.Serial
-                                                              }
-                                                              //send integer if it worked
-                                                              field := map[string]interface{}{"value": val.MaxThreads}
-                                                              influxdb.AddPoint("THREADS", timestamp, field, tags)
-						      }
-					      }
-					      //maxThreads = 0.0
-					      currTimestamp = matched[1]
-					      //thPid = ""
-					      //thCmd = ""
-					      threads = make(map[string]Thread)
-			              }
+                    if len(elems) < 14 {
+                        log.Println(elems)
+                        continue
+                    }
+				    // try to convert string to integer
+                    converted, parseErr := strconv.ParseFloat(elems[6], 64)
+                    if parseErr != nil {
+                        //if not working, skip to next value. We don't want text values in InfluxDB.
+                        continue
+                    }
+				    //if converted > maxThreads {
+				    //      maxThreads = converted
+				    //      thPid = elems[1]
+				    //      thCmd = elems[13]
+				    //}
 
-
-                                      // elems := strings.Split(line, nmonFile.Delimiter)
-                                      // name := elems[0]
-
-                                      if len(elems) < 14 {
-                                            log.Println(elems)
-                                            continue
-                                      }
-				      // try to convert string to integer
-                                      converted, parseErr := strconv.ParseFloat(elems[6], 64)
-                                      if parseErr != nil {
-                                            //if not working, skip to next value. We don't want text values in InfluxDB.
-                                            continue
-                                      }
-				      //if converted > maxThreads {
-				      //      maxThreads = converted
-				      //      thPid = elems[1]
-				      //      thCmd = elems[13]
-				      //}
-
-				      if len(threads) < TopThreads {
-					      t1 := Thread{converted, elems[13]}
-					      threads[elems[1]] = t1
-				      } else {
-					      // p, t := getMinTh(threads)
-					      minPid := "1"
-					      minThr := 0.0
-					      for k, v := range threads {
-						      if (minThr <= 0.0) || (v.MaxThreads < minThr) {
-							      minPid = k
-							      minThr = v.MaxThreads
-						      }
-					      }
-					      if converted > minThr {
-					            delete (threads, minPid)
+				    if len(threads) < TopThreads {
+					    t1 := Thread{converted, elems[13]}
+					    threads[elems[1]] = t1
+				    } else {
+					    // p, t := getMinTh(threads)
+					    minPid := "1"
+					    minThr := 0.0
+					    for k, v := range threads {
+						    if (minThr <= 0.0) || (v.MaxThreads < minThr) {
+							    minPid = k
+							    minThr = v.MaxThreads
+						    }
+					    }
+					    if converted > minThr {
+					        delete (threads, minPid)
 						    t1 := Thread{converted, elems[13]}
 						    threads[elems[1]] = t1
-					      }
-				      }
+					    }
+				    }
 
-				      //continue
-                                }  // if topRegexp.MatchString(line)
+				    //continue
+                }  // if topRegexp.MatchString(line)
 
 				//VG-- maxthreads
 
@@ -334,6 +340,80 @@ func Import(c *cli.Context) error {
 					continue
 				}
 
+
+
+				//VG++
+				//measurement := ""
+				//if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
+				//	measurement = name
+				//} else {
+				//	measurement = nameRegexp.ReplaceAllString(name, "")
+				//}
+				//VG + 
+				tags := map[string]string{"host": nmon.Hostname}
+
+				if measurement == "CPU_ALL" {
+					if len(nmon.MT) > 0 {
+						tags["mtype"] = nmon.MT
+					}
+					if len(nmon.Serial) > 0 {
+						tags["serial"] = nmon.Serial
+					}
+					if len(nmon.SMT) > 0 {
+						tags["smt"] = nmon.SMT
+					}
+					if len(nmon.CPUs) > 0 {
+						tags["cpus_in_sys"] = nmon.CPUs
+					}
+				}
+				if measurement == "MEM" {
+					if len(nmon.MT) > 0 {
+                        tags["mtype"] = nmon.MT
+                    }
+                    if len(nmon.Serial) > 0 {
+                        tags["serial"] = nmon.Serial
+                    }
+				}
+				if cpuallRegexp.MatchString(measurement) {
+					matched = cpuSplitRegexp.FindStringSubmatch(measurement)
+					n := "00000" + matched[2]
+					cpu_logical_name := matched[1] + n[len(n)-4:]
+					measurement = "CPU_LOGICALS"
+					tags["cpu_logical_name"] = cpu_logical_name
+					//if len(nmon.MT) > 0 {
+					//	tags["mtype"] = nmon.MT
+					//}
+					//if len(nmon.Serial) > 0 {
+					//	tags["serial"] = nmon.Serial
+					//}
+					//if len(nmon.SMT) > 0 {
+					//	tags["smt"] = nmon.SMT
+					//}
+					//if len(nmon.CPUs) > 0 {
+					//	tags["cpus_in_sys"] = nmon.CPUs
+					//}
+				}
+
+				// Checking additional tagging
+				for key, value := range tags {
+					if _, ok := nmon.TagParsers[measurement][key]; ok {
+						for _, tagParser := range nmon.TagParsers[measurement][key] {
+							if tagParser.Regexp.MatchString(value) {
+								tags[tagParser.Name] = tagParser.Value
+							}
+						}
+					}
+
+					if _, ok := nmon.TagParsers["_ALL"][key]; ok {
+						for _, tagParser := range nmon.TagParsers["_ALL"][key] {
+							if tagParser.Regexp.MatchString(value) {
+								tags[tagParser.Name] = tagParser.Value
+							}
+						}
+					}
+
+				}
+
 				for i, value := range elems[2:] {
 					if len(nmon.DataSeries[name].Columns) < i+1 {
 						if nmon.Debug {
@@ -343,67 +423,17 @@ func Import(c *cli.Context) error {
 						continue
 					}
 					column := nmon.DataSeries[name].Columns[i]
-					tags := map[string]string{"host": nmon.Hostname, "name": column}
+					// tags := map[string]string{"host": nmon.Hostname, "name": column}
+					tags["name"] = column
 					// try to convert string to integer
 					converted, parseErr := strconv.ParseFloat(value, 64)
 					if parseErr != nil || math.IsNaN(converted) {
 						//if not working, skip to next value. We don't want text values in InfluxDB.
 						continue
-					}
-
+					}	
 					//send integer if it worked
 					field := map[string]interface{}{"value": converted}
 
-					//VG++
-					//measurement := ""
-					//if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
-					//	measurement = name
-					//} else {
-					//	measurement = nameRegexp.ReplaceAllString(name, "")
-					//}
-					//VG + 
-					if measurement == "CPU_ALL" {
-						if len(nmon.MT) > 0 {
-							tags["mtype"] = nmon.MT
-						}
-						if len(nmon.Serial) > 0 {
-							tags["serial"] = nmon.Serial
-						}
-						if len(nmon.SMT) > 0 {
-							tags["smt"] = nmon.SMT
-						}
-						if len(nmon.CPUs) > 0 {
-							tags["cpus_in_sys"] = nmon.CPUs
-						}
-					}
-					if measurement == "MEM" {
-						if len(nmon.MT) > 0 {
-                                                        tags["mtype"] = nmon.MT
-                                                }
-                                                if len(nmon.Serial) > 0 {
-                                                        tags["serial"] = nmon.Serial
-                                                }
-					}
-
-					// Checking additional tagging
-					for key, value := range tags {
-						if _, ok := nmon.TagParsers[measurement][key]; ok {
-							for _, tagParser := range nmon.TagParsers[measurement][key] {
-								if tagParser.Regexp.MatchString(value) {
-									tags[tagParser.Name] = tagParser.Value
-								}
-							}
-						}
-
-						if _, ok := nmon.TagParsers["_ALL"][key]; ok {
-							for _, tagParser := range nmon.TagParsers["_ALL"][key] {
-								if tagParser.Regexp.MatchString(value) {
-									tags[tagParser.Name] = tagParser.Value
-								}
-							}
-						}
-
-					}
 					influxdb.AddPoint(measurement, timestamp, field, tags)
 
 					if influxdb.PointsCount() >= 5000 {
@@ -414,31 +444,28 @@ func Import(c *cli.Context) error {
 						fmt.Printf("#")
 					}
 				}  // for i, value := range elems[2:]
-				if measurement == "CPU_ALL" {
 
-					// write SYSINFO measurement
+				if measurement == "CPU_ALL" {					// write SYSINFO measurement
+
 					sysfield := map[string]interface{}{"value": smtfloat}
 
 					// Checking additional tagging
-                                        for key, value := range systags {
-                                                if _, ok := nmon.TagParsers["SYSINFO"][key]; ok {
-                                                        for _, tagParser := range nmon.TagParsers["SYSINFO"][key] {
-                                                                if tagParser.Regexp.MatchString(value) {
-                                                                        systags[tagParser.Name] = tagParser.Value
-                                                                }
-                                                        }
-                                                }
-
-                                                if _, ok := nmon.TagParsers["_ALL"][key]; ok {
-                                                        for _, tagParser := range nmon.TagParsers["_ALL"][key] {
-                                                                if tagParser.Regexp.MatchString(value) {
-                                                                        systags[tagParser.Name] = tagParser.Value
-                                                                }
-                                                        }
-                                                }
-
-                                        }
-
+                    for key, value := range systags {
+                        if _, ok := nmon.TagParsers["SYSINFO"][key]; ok {
+                            for _, tagParser := range nmon.TagParsers["SYSINFO"][key] {
+                                if tagParser.Regexp.MatchString(value) {
+                                    systags[tagParser.Name] = tagParser.Value
+                                }
+                            }
+                        }
+                        if _, ok := nmon.TagParsers["_ALL"][key]; ok {
+                            for _, tagParser := range nmon.TagParsers["_ALL"][key] {
+                                if tagParser.Regexp.MatchString(value) {
+                                    systags[tagParser.Name] = tagParser.Value
+                                }
+                            }
+                        }
+                    }
 					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
 				}  // if measurement == "CPU_ALL"
 				if measurement == "FCREAD" {
@@ -465,40 +492,37 @@ func Import(c *cli.Context) error {
 							"mtype": nmon.MT,
 							"serial": nmon.Serial,
 							"lparnr": nmon.LPARnr,
-                                                        "lparname": nmon.LPARname}
+                            "lparname": nmon.LPARname}
 
 						for fname, fval := range FCfields {
 							// 
-                                                        // try to convert smt string to integer
-                                                        fieldfloat := 0.0
-                                                        converted, parseErr := strconv.ParseFloat(fval, 64)
-                                                        if parseErr != nil || math.IsNaN(converted) {
-                                                                fieldfloat = 1.0
-                                                        } else {
-                                                                fieldfloat = converted
+                            // try to convert smt string to integer
+                            fieldfloat := 0.0
+                            converted, parseErr := strconv.ParseFloat(fval, 64)
+                            if parseErr != nil || math.IsNaN(converted) {
+                                fieldfloat = 1.0
+                            } else {
+                                fieldfloat = converted
 							}
 							FCfield := map[string]interface{}{"value": fieldfloat}
 							FCtags["name"] = fname
-
-                                                        // Checking additional tagging
-                                                        for key, value := range systags {
-                                                                if _, ok := nmon.TagParsers["FCSTAT"][key]; ok {
-                                                                        for _, tagParser := range nmon.TagParsers["FCSTAT"][key] {
-                                                                                if tagParser.Regexp.MatchString(value) {
-                                                                                        FCtags[tagParser.Name] = tagParser.Value
-                                                                                }
-                                                                        }
-                                                                }
-
-                                                                if _, ok := nmon.TagParsers["_ALL"][key]; ok {
-                                                                        for _, tagParser := range nmon.TagParsers["_ALL"][key] {
-                                                                                if tagParser.Regexp.MatchString(value) {
-                                                                                        FCtags[tagParser.Name] = tagParser.Value
-                                                                                }
-                                                                        }
-                                                                }
-                                                        }
-
+                            // Checking additional tagging
+                            for key, value := range systags {
+                                if _, ok := nmon.TagParsers["FCSTAT"][key]; ok {
+                                    for _, tagParser := range nmon.TagParsers["FCSTAT"][key] {
+                                        if tagParser.Regexp.MatchString(value) {
+                                            FCtags[tagParser.Name] = tagParser.Value
+                                        }
+                                    }
+                                }
+                                if _, ok := nmon.TagParsers["_ALL"][key]; ok {
+                                    for _, tagParser := range nmon.TagParsers["_ALL"][key] {
+                                        if tagParser.Regexp.MatchString(value) {
+                                            FCtags[tagParser.Name] = tagParser.Value
+                                        }
+                                    }
+                                }
+                            }
 							influxdb.AddPoint("FCSTAT", timestamp, FCfield, FCtags)
 						} // for field := range FCfields
 					} // for k := range nmon.FCs
@@ -547,7 +571,7 @@ func Import(c *cli.Context) error {
 					}
 
 					tags := map[string]string{"host": nmon.Hostname, "name": column, "pid": elems[1], "command": elems[13], "wlm": wlmclass}
-
+					
 					if len(nmon.Serial) > 0 {
 						tags["serial"] = nmon.Serial
 					}
@@ -574,6 +598,7 @@ func Import(c *cli.Context) error {
 				}
 			}  // if topRegexp.MatchString(line)
 		}  // for _, line := range lines
+		//
 		// flushing remaining data
 		influxdb.WritePoints()
 		count += influxdb.PointsCount()
@@ -591,7 +616,6 @@ func Import(c *cli.Context) error {
 			err = influxdbLog.WritePoints()
 			nmon2influxdblib.CheckError(err)
 		}
-	}
-
+	}			// for _, nmonFile := range nmonFiles.Valid() ...
 	return nil
 }
