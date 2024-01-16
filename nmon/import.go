@@ -27,7 +27,7 @@ var timeRegexp = regexp.MustCompile(`^ZZZZ.(T\d+).(.*)$`)
 var intervalRegexp = regexp.MustCompile(`^AAA.interval.(\d+)`)
 var headerRegexp = regexp.MustCompile(`^AAA|^BBB|^UARG|\WT\d{4,16}`)
 var infoRegexp = regexp.MustCompile(`^AAA.(.*)`)
-var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
+var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+|^CPUUTIL\d+`)
 var diskallRegexp = regexp.MustCompile(`^DISK`)
 var skipRegexp = regexp.MustCompile(`T0+\W|^Z|^TOP.%CPU`)
 var statsRegexp = regexp.MustCompile(`\W(T\d{4,16})`)
@@ -84,6 +84,8 @@ var aixfclossofsignalRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Loss of S
 var aixfcinvalidtxRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid Tx Word Count\S*\s*(\d+)`)
 var aixfcinvalidcrcRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid CRC Count\S*\s*(\d+)`)
 
+var dfRegexp = regexp.MustCompile(`^BBB.*df\s?-m.\"(.*)\"$`)
+
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {
 
@@ -106,7 +108,10 @@ func Import(c *cli.Context) error {
 
 	var userSkipRegexp *regexp.Regexp
 	if len(config.ImportSkipMetrics) > 0 {
+		//VG!!!
+		//fmt.Printf("config.ImportSkipMetrics = %s\n", config.ImportSkipMetrics)
 		skipped := strings.Replace(config.ImportSkipMetrics, ",", "|", -1)
+		//fmt.Printf("config.ImportSkipMetrics (after replace) = %s\n", skipped)
 		userSkipRegexp = regexp.MustCompile(skipped)
 	}
 
@@ -127,7 +132,7 @@ func Import(c *cli.Context) error {
 			log.Printf("Import file: %s", nmonFile.Name)
 		}
 
-		lines := nmonFile.Content()
+		lines := nmonFile.Content()									// lines - lines array from nmon file content
 		log.Printf("NMON file separator: %s\n", nmonFile.Delimiter)
 		var last string
 		filters := new(influxdbclient.Filters)
@@ -199,20 +204,19 @@ func Import(c *cli.Context) error {
 		const TopThreads = 5
 		var currTimestamp = ""
 		//var maxThreads = 0.0
-                //var thPid = ""
-                //var thCmd = ""
+        //var thPid = ""
+        //var thCmd = ""
 		//VG--
-		for _, line := range lines {							// lines loop !!!
+		// ===============================================================================================================
+		for _, line := range lines {											// lines loop !!!
 
 			if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {		// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
 				continue
 			}
-
 			if diskallRegexp.MatchString(line) && config.ImportSkipDisks {		// var diskallRegexp = regexp.MustCompile(`^DISK`)
 				continue
 			}
-
-			if skipRegexp.MatchString(line) {									// config-defined skip regexp
+			if skipRegexp.MatchString(line) {									// skipRegexp = regexp.MustCompile(`T0+\W|^Z|^TOP.%CPU`)
 				continue
 			}
 
@@ -233,12 +237,12 @@ func Import(c *cli.Context) error {
                 if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {		// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
 				    measurement = name													// var nfsRegexp = regexp.MustCompile(`^NFS`)
 				} else {
-					measurement = nameRegexp.ReplaceAllString(name, "")					// var nameRegexp = regexp.MustCompile(`(\d+)$`)
+					measurement = nameRegexp.ReplaceAllString(name, "")					// var nameRegexp = regexp.MustCompile(`(\d+)$`) - remove all numbers from measurement name
 				}
 				//VG ---
 
 				//VG++  maxthreads
-                if topRegexp.MatchString(line) {
+                if topRegexp.MatchString(line) {								// var topRegexp = regexp.MustCompile(`^TOP.\d+.(T\d+)`)
                     matched := topRegexp.FindStringSubmatch(line)
 				    if currTimestamp != matched[1] {
 					    if len(currTimestamp) > 0 {
@@ -280,8 +284,22 @@ func Import(c *cli.Context) error {
                         log.Println(elems)
                         continue
                     }
+					// getting Threads column
+					thNum, err := nmon.GetColumnInDataserie("TOP", "Threads")
+					if thNum >= len(elems) {
+						//VG!!!
+						//fmt.Printf("thNum=%d out of index %d\n", thNum, len(elems))
+						continue
+					}
+					if err != nil {
+						//VG!!!
+						//fmt.Printf("Import search Threads: %s\n", err)
+						continue
+					}
 				    // try to convert string to integer
-                    converted, parseErr := strconv.ParseFloat(elems[6], 64)
+                    converted, parseErr := strconv.ParseFloat(elems[thNum], 64)
+					//VG!!!
+					//fmt.Printf("thNum=%d, Threads=%f", thNum, converted)
                     if parseErr != nil {
                         //if not working, skip to next value. We don't want text values in InfluxDB.
                         continue
@@ -292,8 +310,22 @@ func Import(c *cli.Context) error {
 				    //      thCmd = elems[13]
 				    //}
 
+					// getting Command column
+					thNum, err = nmon.GetColumnInDataserie("TOP", "Command")
+					if thNum >= len(elems) {
+						//VG!!!
+						//fmt.Printf("thNum=%d out of index %d\n", thNum, len(elems))
+						continue
+					}
+					if err != nil {
+						//VG!!!
+						//fmt.Printf("Import search Command: %s\n", err)
+						continue
+					}
+					//VG!!!
+					//fmt.Printf("thNum=%d, Command=%s", thNum, elems[thNum])
 				    if len(threads) < TopThreads {
-					    t1 := Thread{converted, elems[13]}
+					    t1 := Thread{converted, elems[thNum]}
 					    threads[elems[1]] = t1
 				    } else {
 					    // p, t := getMinTh(threads)
@@ -307,7 +339,7 @@ func Import(c *cli.Context) error {
 					    }
 					    if converted > minThr {
 					        delete (threads, minPid)
-						    t1 := Thread{converted, elems[13]}
+						    t1 := Thread{converted, elems[thNum]}
 						    threads[elems[1]] = t1
 					    }
 				    }
@@ -317,7 +349,7 @@ func Import(c *cli.Context) error {
 
 				//VG-- maxthreads
 
-				if len(config.ImportSkipMetrics) > 0 {
+				if len(config.ImportSkipMetrics) > 0 {								// user configuration skip metrics !!
 					if userSkipRegexp.MatchString(name) {
 						if nmon.Debug {
 							if !LoggedSkippedMetrics[name] {
@@ -340,8 +372,6 @@ func Import(c *cli.Context) error {
 					continue
 				}
 
-
-
 				//VG++
 				//measurement := ""
 				//if nfsRegexp.MatchString(name) || cpuallRegexp.MatchString(name) {
@@ -350,6 +380,7 @@ func Import(c *cli.Context) error {
 				//	measurement = nameRegexp.ReplaceAllString(name, "")
 				//}
 				//VG + 
+
 				tags := map[string]string{"host": nmon.Hostname}
 
 				if measurement == "CPU_ALL" {
@@ -423,12 +454,13 @@ func Import(c *cli.Context) error {
 						continue
 					}
 					column := nmon.DataSeries[name].Columns[i]
-					// tags := map[string]string{"host": nmon.Hostname, "name": column}
 					tags["name"] = column
 					// try to convert string to integer
-					converted, parseErr := strconv.ParseFloat(value, 64)
+					converted, parseErr := strconv.ParseFloat(strings.TrimSpace(value), 64)
 					if parseErr != nil || math.IsNaN(converted) {
 						//if not working, skip to next value. We don't want text values in InfluxDB.
+						//VG!!!
+						//fmt.Printf("Float convertion error. Measurement=%s, columnt=%s, value=%s, i=%d\n", name, column, value, i)
 						continue
 					}	
 					//send integer if it worked
@@ -468,6 +500,71 @@ func Import(c *cli.Context) error {
                     }
 					influxdb.AddPoint("SYSINFO", timestamp, sysfield, systags)
 				}  // if measurement == "CPU_ALL"
+
+				if measurement == "MEM" {						// VG - make MEMNEW measurement for linux
+					if _, ok := nmon.DataSeries["MEMNEW"]; !ok {
+						myMemNewSerie := map[string]float64{"memtotal":0.0, "memfree":0.0, "cached":0.0, "buffers":0.0}
+						errFlag := false
+						for key, _ := range myMemNewSerie {
+							idx, err := nmon.GetColumnInDataserie("MEM", key)
+							if err != nil {
+								errFlag = true
+								break
+							}
+							if idx >= len(elems) {
+								errFlag = true
+								break
+							}
+							// try to convert string to float
+							converted, err := strconv.ParseFloat(elems[idx], 64)
+							if parseErr != nil {
+								errFlag = true
+								break
+							}
+							myMemNewSerie[key] = converted
+						}
+						if ! errFlag {
+							field := map[string]interface{}{"value": 0.0}
+							//
+							tags["name"] = "Free%"
+							field["value"] = myMemNewSerie["memfree"]/myMemNewSerie["memtotal"]*100.0
+							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
+							//
+							tags["name"] = "Cached%"
+							field["value"] = myMemNewSerie["cached"]/myMemNewSerie["memtotal"]*100.0
+							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
+							//
+							tags["name"] = "Buffers%"
+							field["value"] = myMemNewSerie["buffers"]/myMemNewSerie["memtotal"]*100.0
+							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
+							//
+							tags["name"] = "Used%"
+							field["value"] = (myMemNewSerie["memtotal"] - myMemNewSerie["cached"] - myMemNewSerie["buffers"])/myMemNewSerie["memtotal"]*100.0
+							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
+							//
+						}
+					}
+				}			// if measurements == "MEM"
+
+				if measurement == "JFSFILE" {
+					if len(nmon.DF) > 0 {
+						// write DF filesystems status
+						for filesystem, dfstruct := range nmon.DF {
+							tags["name"] = dfstruct.mount
+							tags["filesystem"] = filesystem
+
+							field := map[string]interface{} { "value"    : dfstruct.blocks_mb,
+								"blocks_mb": dfstruct.blocks_mb,
+								"used_mb"  : dfstruct.used_mb,
+								"used%"    : dfstruct.used_pct,
+								"iused"    : dfstruct.iused,
+								"iused%"   : dfstruct.iused_pct}
+							influxdb.AddPoint("JFSDF", timestamp, field, tags)
+						}
+						nmon.DF = make(map[string]DFstruct)
+					}
+				}		// if measurement == "JFSFILE"
+
 				if measurement == "FCREAD" {
 					// write FC adapter statistics report
 					for dev, devval := range nmon.FCs {

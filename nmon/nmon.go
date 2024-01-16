@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -43,6 +44,7 @@ type Nmon struct {
 	Location    *time.Location
 	TagParsers  nmon2influxdblib.TagParsers
 	FCs         map[string]FCstruct
+	DF			map[string]DFstruct
 }
 type FCstruct struct {
 	wwpn        string
@@ -58,6 +60,14 @@ type FCstruct struct {
 	invtx       string
 	invcrc      string
 }
+type DFstruct struct {
+	mount   	string
+	blocks_mb	float64
+	used_mb		float64
+	used_pct	float64
+	iused		float64
+	iused_pct	float64
+}
 
 // DataSerie structure contains the columns and points to insert in InfluxDB
 type DataSerie struct {
@@ -71,7 +81,7 @@ func (nmon *Nmon) AppendText(text string) {
 
 // NewNmon initialize a Nmon structure
 func NewNmon() *Nmon {
-	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string), FCs: make(map[string]FCstruct)}
+	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string), FCs: make(map[string]FCstruct), DF: make(map[string]DFstruct)}
 
 }
 
@@ -94,6 +104,26 @@ func (nmon *Nmon) BuildPoint(serie string, values []string) map[string]interface
 	}
 
 	return point
+}
+
+// GetColumnInDataserie returns column number for the serie
+func (nmon *Nmon) GetColumnInDataserie(serie string, column string) (Number int, err error) {
+	// VG
+	d, ok := nmon.DataSeries[serie]
+	if !ok {
+		errorMessage := fmt.Sprint("Serie %s does not exists", serie)
+		err = errors.New(errorMessage)
+		return
+	}
+	for n, value := range d.Columns {
+		if value == column {
+			Number = n + 2
+			return 
+		}
+	}
+	errorMessage := fmt.Sprint("Column %s not fount in Serie %s", column, serie)
+	err = errors.New(errorMessage)
+	return
 }
 
 //GetTimeStamp retrieves the TimeStamp corresponding to the entry
@@ -137,12 +167,13 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 	lines := nmonFile.Content()
 
-	var userSkipRegexp *regexp.Regexp
-
-	if len(config.ImportSkipMetrics) > 0 {
-		skipped := strings.Replace(config.ImportSkipMetrics, ",", "|", -1)
-		userSkipRegexp = regexp.MustCompile(skipped)
-	}
+	//VG build Series struct for ALL Measurements, but filtar during the import.
+	//var userSkipRegexp *regexp.Regexp
+	//
+	//if len(config.ImportSkipMetrics) > 0 {
+	//	skipped := strings.Replace(config.ImportSkipMetrics, ",", "|", -1)
+	//	userSkipRegexp = regexp.MustCompile(skipped)
+	//}
 	badtext := fmt.Sprintf("%s%s",nmonFile.Delimiter,nmonFile.Delimiter)
         var badRegexp = regexp.MustCompile(badtext)
 	for _, line := range lines {
@@ -432,6 +463,69 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
             nmon.FCs[fcname] = fcstruct
             continue
         }
+		if dfRegexp.MatchString(line) {
+			matched := dfRegexp.FindStringSubmatch(line)
+			elems   := strings.Fields(matched[1])
+			fvalues := []float64{}
+
+			if nmon.OS == "linux" {
+				// DFfieldsLinux := []{"filesystem", "blocks_mb", "used_mb", "available_mb", "used%", "mount to"}
+				if (len(elems) < 6) || (elems[0] == "Filesystem") || (elems[0] == "shm") || (elems[0] == "overlay") {
+					continue
+				}				
+				for _, rawvalue := range elems[1:5] {
+					value, parseErr := strconv.ParseFloat(strings.Replace(rawvalue, "%", "", 1), 64)
+					if parseErr != nil || math.IsNaN(value) {
+						continue
+					}
+					fvalues = append(fvalues, value)
+				}
+				if len(fvalues) < 4 {
+					continue
+				}
+				if elems[0][0:4] == "ddev" {
+					elems[0] = "/" + elems[0][1:]
+				}
+				fields, ok := nmon.DF[elems[0]]
+				if !ok || (elems[5] == "/run") {
+					fields.mount      = elems[5]
+					fields.blocks_mb  = fvalues[0]
+					fields.used_mb    = fvalues[1]
+					fields.used_pct   = fvalues[1]/fvalues[0]*100
+					fields.iused      = 0
+					fields.iused_pct  = 0
+					nmon.DF[elems[0]] = fields
+				}
+			} else {
+				// DFfieldsAIX   := []{"filesystem", "blocks_mb", "free_mb", "used%", "iused", "iused%", "mount to"}
+				if (len(elems) < 7) || (elems[0] == "Filesystem") || (elems[0] == "dproc") {
+					continue
+				}				
+				for _, rawvalue := range elems[1:6] {
+					value, parseErr := strconv.ParseFloat(strings.Replace(rawvalue, "%", "", 1), 64)
+					if parseErr != nil || math.IsNaN(value) {
+						// fmt.Printf("Conv err. rawval=%s, value=%v, index=%d, elems=%v\n", rawvalue, value, len(fvalues), elems)
+						continue
+					}
+					fvalues = append(fvalues, value)
+				}
+				if len(fvalues) < 5 {
+					continue
+				}
+				if elems[0][0:4] == "ddev" {
+					elems[0] = "/" + elems[0][1:]
+				}
+				fields := nmon.DF[elems[0]]
+				fields.mount      = elems[6]
+				fields.blocks_mb  = fvalues[0]
+				fields.used_mb    = fvalues[0] - fvalues[1]
+				fields.used_pct   = fvalues[2]
+				fields.iused      = fvalues[3]
+				fields.iused_pct   = fvalues[4]
+				nmon.DF[elems[0]] = fields
+			}
+			continue
+		}
 		//VG --
 
 		if infoRegexp.MatchString(line) {								// var infoRegexp = regexp.MustCompile(`^AAA.(.*)`)
@@ -459,11 +553,12 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 				continue
 			}
 			name := elems[0]								// Name of serie, like CPU_ALL, MEM, etc
-			if len(config.ImportSkipMetrics) > 0 {			//
-				if userSkipRegexp.MatchString(name) {		//  Skip series that are mentioned in config userSkipRegexp 
-					continue
-				}
-			}
+			//VG build Series struct for ALL Measurements, but filtar during the import.
+			//if len(config.ImportSkipMetrics) > 0 {			//
+			//	if userSkipRegexp.MatchString(name) {		//  Skip series that are mentioned in config userSkipRegexp 
+			//		continue
+			//	}
+			//}
 
 			if config.Debug == true {
 				log.Printf("Adding serie %s\n", name)
