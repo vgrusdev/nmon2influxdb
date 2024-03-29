@@ -45,6 +45,7 @@ type Nmon struct {
 	TagParsers  nmon2influxdblib.TagParsers
 	FCs         map[string]FCstruct
 	DF			map[string]DFstruct
+	VG			map[string]VGstruct
 }
 type FCstruct struct {
 	wwpn        string
@@ -68,6 +69,20 @@ type DFstruct struct {
 	iused		float64
 	iused_pct	float64
 }
+type VGstruct struct {
+	//vgname string,			//tag     	vgnameRegexp		"^BBB.*VOLUME GROUP:\s+(\S+)"
+	vgstate		string			//tag	  	vgstateRegexp		"^BBB.*VG STATE:\s+(\w+)\s+PP SIZE:\s+(\d+)"
+	pp_size_mb 	float64
+	total_mb 	float64			//			vgtotalRegexp		"^BBB.*TOTAL PPs:.*\((\d+)"
+	lvs      	float64			//			vglvsRegexp  		"^BBB.*LVs:\s+(\d+)\s+USED PPs:.*\((\d+)"
+	used_mb  	float64			  
+	used_pct 	float64
+	pvs      	float64			//			vgpvsRegexp	  		"^BBB.*TOTAL PVs:\s+(\d+)"
+	stale_pps 	float64			//			vgstaleRegexp		"^BBB.*STALE PPS:\s+(\d+)"
+	auto_on  	string			//tag	  	vgautoonRegexp		"^BBB.*AUTO ON:\s+(\w+)"
+	auto_sync 	string			//tag	  	vgautosyncRegexp	"^BBB.*AUTO SYNC:\s+(\w+)"
+	disk_block_size float64		//			vgblocksizeRegexp	"^BBB.*DISK BLOCK SIZE:\s+(\d+)"
+}
 
 // DataSerie structure contains the columns and points to insert in InfluxDB
 type DataSerie struct {
@@ -81,7 +96,7 @@ func (nmon *Nmon) AppendText(text string) {
 
 // NewNmon initialize a Nmon structure
 func NewNmon() *Nmon {
-	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string), FCs: make(map[string]FCstruct), DF: make(map[string]DFstruct)}
+	return &Nmon{DataSeries: make(map[string]DataSerie), TimeStamps: make(map[string]string), FCs: make(map[string]FCstruct), DF: make(map[string]DFstruct), VG: make(map[string]VGstruct)}
 
 }
 
@@ -175,7 +190,10 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 	//	userSkipRegexp = regexp.MustCompile(skipped)
 	//}
 	badtext := fmt.Sprintf("%s%s",nmonFile.Delimiter,nmonFile.Delimiter)
-        var badRegexp = regexp.MustCompile(badtext)
+    var badRegexp = regexp.MustCompile(badtext)
+
+	vgname := ""
+
 	for _, line := range lines {
 
 		if cpuallRegexp.MatchString(line) && !config.ImportAllCpus {	// var cpuallRegexp = regexp.MustCompile(`^CPU\d+|^SCPU\d+|^PCPU\d+`)
@@ -237,10 +255,14 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
             nmon.OStl = matched[1]
             continue
         }
-		if lparnumbernameRegexp.MatchString(line) {
-            matched := lparnumbernameRegexp.FindStringSubmatch(line)
+		if lparnameRegexp.MatchString(line) {
+            matched := lparnameRegexp.FindStringSubmatch(line)
+			nmon.LPARname = matched[1]
+            continue
+        }
+		if lparnumberRegexp.MatchString(line) {
+            matched := lparnumberRegexp.FindStringSubmatch(line)
             nmon.LPARnr = matched[1]
-			nmon.LPARname = matched[2]
             continue
         }
 		if aixmtRegexp.MatchString(line) {
@@ -470,9 +492,16 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 
 			if nmon.OS == "linux" {
 				// DFfieldsLinux := []{"filesystem", "blocks_mb", "used_mb", "available_mb", "used%", "mount to"}
-				if (len(elems) < 6) || (elems[0] == "Filesystem") || (elems[0] == "shm") || (elems[0] == "overlay") {
+				if (len(elems) < 6) {
 					continue
-				}				
+				}
+				if  (elems[0] == "Filesystem") || (elems[0] == "shm") || (elems[0] == "overlay") {
+					continue
+				}
+				fsName := elems[0]
+				if (fsName[0:3] != "dev") && (fsName[0:1] == "d") {
+					fsName = "/" + fsName[1:]
+				}
 				for _, rawvalue := range elems[1:5] {
 					value, parseErr := strconv.ParseFloat(strings.Replace(rawvalue, "%", "", 1), 64)
 					if parseErr != nil || math.IsNaN(value) {
@@ -483,10 +512,10 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 				if len(fvalues) < 4 {
 					continue
 				}
-				if elems[0][0:4] == "ddev" {
-					elems[0] = "/" + elems[0][1:]
-				}
-				fields, ok := nmon.DF[elems[0]]
+				//if elems[0][0:1] == "d" {
+				//	elems[0] = "/" + elems[0][1:]
+				//}
+				fields, ok := nmon.DF[fsName]
 				if !ok || (elems[5] == "/run") {
 					fields.mount      = elems[5]
 					fields.blocks_mb  = fvalues[0]
@@ -494,12 +523,19 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 					fields.used_pct   = fvalues[1]/fvalues[0]*100
 					fields.iused      = 0
 					fields.iused_pct  = 0
-					nmon.DF[elems[0]] = fields
+					nmon.DF[fsName] = fields
 				}
 			} else {
 				// DFfieldsAIX   := []{"filesystem", "blocks_mb", "free_mb", "used%", "iused", "iused%", "mount to"}
-				if (len(elems) < 7) || (elems[0] == "Filesystem") || (elems[0] == "dproc") {
+				if (len(elems) < 7) {
 					continue
+				}
+				if (elems[0] == "Filesystem") || (elems[0] == "dproc") {
+					continue
+				}
+				fsName := elems[0]
+				if (fsName[0:3] != "dev") && (fsName[0:1] == "d") {
+					fsName = "/" + fsName[1:]
 				}				
 				for _, rawvalue := range elems[1:6] {
 					value, parseErr := strconv.ParseFloat(strings.Replace(rawvalue, "%", "", 1), 64)
@@ -512,18 +548,122 @@ func InitNmon(config *nmon2influxdblib.Config, nmonFile nmon2influxdblib.File) (
 				if len(fvalues) < 5 {
 					continue
 				}
-				if elems[0][0:4] == "ddev" {
-					elems[0] = "/" + elems[0][1:]
-				}
-				fields := nmon.DF[elems[0]]
+				//if elems[0][0:1] == "d" {
+				//	elems[0] = "/" + elems[0][1:]
+				//}
+				fields := nmon.DF[fsName]
 				fields.mount      = elems[6]
 				fields.blocks_mb  = fvalues[0]
 				fields.used_mb    = fvalues[0] - fvalues[1]
 				fields.used_pct   = fvalues[2]
 				fields.iused      = fvalues[3]
 				fields.iused_pct   = fvalues[4]
-				nmon.DF[elems[0]] = fields
+				nmon.DF[fsName] = fields
 			}
+			continue
+		}
+
+		if vgnameRegexp.MatchString(line) {
+			matched := vgnameRegexp.FindStringSubmatch(line)
+			vgname = matched[1]
+			continue
+		}
+		if vgstateRegexp.MatchString(line) {
+			matched := vgstateRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			fields.vgstate = matched[1]
+			value, parseErr := strconv.ParseFloat(matched[2], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.pp_size_mb = 0
+			} else {
+				fields.pp_size_mb = value
+			}
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgtotalRegexp.MatchString(line) {
+			matched := vgtotalRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			value, parseErr := strconv.ParseFloat(matched[1], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.total_mb = 0
+			} else {
+				fields.total_mb = value
+			}
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vglvsRegexp.MatchString(line) {
+			matched := vglvsRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			value, parseErr := strconv.ParseFloat(matched[1], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.lvs = 0
+			} else {
+				fields.lvs = value
+			}
+			value, parseErr = strconv.ParseFloat(matched[2], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.used_mb = 0
+			} else {
+				fields.used_mb = value
+			}
+			if fields.total_mb > 0 {
+				fields.used_pct = fields.used_mb / fields.total_mb * 100
+			} else {
+				fields.used_pct = 0
+			}
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgpvsRegexp.MatchString(line) {
+			matched := vgpvsRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			value, parseErr := strconv.ParseFloat(matched[1], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.pvs = 0
+			} else {
+				fields.pvs = value
+			}
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgstaleRegexp.MatchString(line) {
+			matched := vgstaleRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			value, parseErr := strconv.ParseFloat(matched[1], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.stale_pps = 0
+			} else {
+				fields.stale_pps = value
+			}
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgautoonRegexp.MatchString(line) {
+			matched := vgautoonRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			fields.auto_on = matched[1]
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgautosyncRegexp.MatchString(line) {
+			matched := vgautosyncRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			fields.auto_sync = matched[1]
+			nmon.VG[vgname] = fields
+			continue
+		}
+		if vgblocksizeRegexp.MatchString(line) {
+			matched := vgblocksizeRegexp.FindStringSubmatch(line)
+			fields := nmon.VG[vgname]
+			value, parseErr := strconv.ParseFloat(matched[1], 64)
+			if parseErr != nil || math.IsNaN(value) {
+				fields.disk_block_size = 0
+			} else {
+				fields.disk_block_size = value
+			}
+			nmon.VG[vgname] = fields
 			continue
 		}
 		//VG --

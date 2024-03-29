@@ -38,7 +38,9 @@ var nameRegexp = regexp.MustCompile(`(\d+)$`)
 // VG
 var cpuSplitRegexp = regexp.MustCompile(`^(\D+)(\d+)`)
 var viosverRegexp = regexp.MustCompile(`^AAA.VIOS.(\S+)`)
-var lparnumbernameRegexp = regexp.MustCompile(`^AAA.LPARNumberName.(\d+).(\S+)`)
+//var lparnumbernameRegexp = regexp.MustCompile(`^AAA.LPARNumberName.(\d+).(\S+)`)
+var lparnameRegexp = regexp.MustCompile(`^BBB.*lparstat.*\"Partition Name.*:\s+(\S+)\"`)
+var lparnumberRegexp = regexp.MustCompile(`^BBB.*lparstat.*\"Partition Number.*:\s+(\d+)\"`)
 var aixverRegexp = regexp.MustCompile(`^AAA.AIX.(\S+)`)
 var aixtlRegexp = regexp.MustCompile(`^AAA.TL.(\d+)`)
 var aixmtRegexp = regexp.MustCompile(`^AAA.MachineType.IBM.(\S+)`)
@@ -85,6 +87,31 @@ var aixfcinvalidtxRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid Tx W
 var aixfcinvalidcrcRegexp = regexp.MustCompile(`^BBB.*FC\d+.(fcs\d+).Invalid CRC Count\S*\s*(\d+)`)
 
 var dfRegexp = regexp.MustCompile(`^BBB.*df\s?-m.\"(.*)\"$`)
+
+var vgnameRegexp = regexp.MustCompile(`^BBB.*VOLUME GROUP:\s+(\S+)`)
+var vgstateRegexp = regexp.MustCompile(`^BBB.*VG STATE:\s+(\w+)\s+PP SIZE:\s+(\d+)`)
+var vgtotalRegexp = regexp.MustCompile(`^BBB.*TOTAL PPs:.*\((\d+)`)
+var vglvsRegexp = regexp.MustCompile(`^BBB.*LVs:\s+(\d+)\s+USED PPs:.*\((\d+)`)
+var vgpvsRegexp = regexp.MustCompile(`^BBB.*TOTAL PVs:\s+(\d+)`)
+var vgstaleRegexp = regexp.MustCompile(`^BBB.*STALE PPS:\s+(\d+)`)
+var vgautoonRegexp = regexp.MustCompile(`^BBB.*AUTO ON:\s+(\w+)`)
+var vgautosyncRegexp = regexp.MustCompile(`^BBB.*AUTO SYNC:\s+(\w+)`)
+var vgblocksizeRegexp = regexp.MustCompile(`^BBB.*DISK BLOCK SIZE:\s+(\d+)`)
+
+//type VGstruct struct {
+//	//vgname string,			//tag     	vgnameRegexp	"^BBB.*VOLUME GROUP:\s+(\S+)"
+//	vgstate string,			//tag	  	vgstateRegexp	"^BBB.*VG STATE:\s+(\w+)\s+PP SIZE:\s+(\d+)"
+//	pp_size_mb float64,
+//	total_mb float64,		//			vgtotalRegexp	"^BBB.*TOTAL PPs:.*\((\d+)"
+//	lvs      float64,		//			vglvsRegexp  	"^BBB.*LVs:\s+(\d+)\s+USED PPs:.*\((\d+)"
+//	used_mb  float64,			  
+//	used_pct float64,
+//	pvs      float64,		//			vgpvsRegexp	  	"^BBB.*TOTAL PVs:\s+(\d+)"
+//	stale_pps float64,		//			vgstaleRegexp	"^BBB.*STALE PPS:\s+(\d+)"
+//	auto_on  string,		//tag	  	vgautoonRegexp	"^BBB.*AUTO ON:\s+(\w+)"
+//	auto_sync string,		//tag	  	vgautosyncRegexp	"^BBB.*AUTO SYNC:\s+(\w+)"
+//	disk_block_size float64	//			vgblocksizeRegexp	"^BBB.*DISK BLOCK SIZE:\s+(\d+)"
+//}
 
 //Import is the entry point for subcommand nmon import
 func Import(c *cli.Context) error {
@@ -133,7 +160,7 @@ func Import(c *cli.Context) error {
 		}
 
 		lines := nmonFile.Content()									// lines - lines array from nmon file content
-		log.Printf("NMON file separator: %s\n", nmonFile.Delimiter)
+		// VG!!! log.Printf("NMON file separator: %s\n", nmonFile.Delimiter)
 		var last string
 		filters := new(influxdbclient.Filters)
 		filters.Add("file", path.Base(nmonFile.Name), "text")
@@ -164,7 +191,7 @@ func Import(c *cli.Context) error {
 		if !nmon.Config.ImportForce && len(origChecksum) > 0 {
 
 			if origChecksum == nmonFile.Checksum() {
-				fmt.Printf("file not changed since last import: %s\n", nmonFile.Name)
+				fmt.Printf("File %s not changed since last import.\n", nmonFile.Name)
 				continue
 			}
 		}
@@ -473,7 +500,7 @@ func Import(c *cli.Context) error {
 						nmon2influxdblib.CheckError(err)
 						count += influxdb.PointsCount()
 						influxdb.ClearPoints()
-						fmt.Printf("#")
+						//fmt.Printf("#")
 					}
 				}  // for i, value := range elems[2:]
 
@@ -539,7 +566,7 @@ func Import(c *cli.Context) error {
 							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
 							//
 							tags["name"] = "Used%"
-							field["value"] = (myMemNewSerie["memtotal"] - myMemNewSerie["cached"] - myMemNewSerie["buffers"])/myMemNewSerie["memtotal"]*100.0
+							field["value"] = (myMemNewSerie["memtotal"] - myMemNewSerie["cached"] - myMemNewSerie["buffers"] - myMemNewSerie["memfree"])/myMemNewSerie["memtotal"]*100.0
 							influxdb.AddPoint("MEMNEW", timestamp, field, tags)
 							//
 						}
@@ -564,6 +591,33 @@ func Import(c *cli.Context) error {
 						nmon.DF = make(map[string]DFstruct)
 					}
 				}		// if measurement == "JFSFILE"
+
+				if measurement == "VGBUSY" {
+					if len(nmon.VG) > 0 {
+						for vgname, vgstruct := range nmon.VG {
+							tags["name"] = vgname
+							// tags["vgstate"]   = vgstruct.vgstate
+							// tags["auto_on"]   = vgstruct.auto_on
+							// tags["auto_sync"] = vgstruct.auto_sync
+
+							field := map[string]interface{} { "value"    : vgstruct.total_mb,
+								"vgstate"   : vgstruct.vgstate,
+								"pp_size_mb": vgstruct.pp_size_mb,
+								"total_mb"  : vgstruct.total_mb,
+								"lvs"       : vgstruct.lvs,
+								"used_mb"   : vgstruct.used_mb,
+								"used_pct"  : vgstruct.used_pct,
+								"pvs"       : vgstruct.pvs,
+								"stale_pps" : vgstruct.stale_pps,
+								"auto_on"   : vgstruct.auto_on,
+								"auto_sync" : vgstruct.auto_sync,
+								"disk_block": vgstruct.disk_block_size}
+							
+							influxdb.AddPoint("VGLS", timestamp, field, tags)
+						}
+						nmon.VG = make(map[string]VGstruct)
+					}
+				}		// if measurement == "VGBUSY"
 
 				if measurement == "FCREAD" {
 					// write FC adapter statistics report
@@ -690,7 +744,7 @@ func Import(c *cli.Context) error {
 						nmon2influxdblib.CheckError(err)
 						count += influxdb.PointsCount()
 						influxdb.ClearPoints()
-						fmt.Printf("#")
+						//fmt.Printf("#")
 					}
 				}
 			}  // if topRegexp.MatchString(line)
@@ -699,7 +753,7 @@ func Import(c *cli.Context) error {
 		// flushing remaining data
 		influxdb.WritePoints()
 		count += influxdb.PointsCount()
-		fmt.Printf("\nFile %s imported : %d points !\n", nmonFile.Name, count)
+		fmt.Printf("File %s imported : %d points !\n", nmonFile.Name, count)
 		if config.ImportBuildDashboard {
 			DashboardFile(config, nmonFile.Name)
 		}

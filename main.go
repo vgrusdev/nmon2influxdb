@@ -8,6 +8,7 @@ package main
 import (
 	"log"
 	"os"
+	//"fmt"
 
 	"github.com/adejoux/nmon2influxdb/hmc"
 	"github.com/adejoux/nmon2influxdb/nmon"
@@ -18,9 +19,33 @@ import (
 func main() {
 	config := nmon2influxdblib.InitConfig()
 
-	cfgfile := config.LoadCfgFile()
+	// VG: if config file provided by the CLI parameters
+	configFile  := ""
+    configIndex := -1
+
+    myArgs := os.Args
+    for i, arg := range myArgs {
+        if configIndex >= 0 {
+            configFile = arg
+            break
+        } else {
+            if arg == "--configfile" {
+                configIndex = i
+            }
+        }
+    }
+    if configIndex >= 0 {
+        if configFile =="" {
+            log.Fatalf("Error, Use: --configfile <config file>\n")
+            os.Exit(1)
+        }
+        //myArgs = config.removeArgs(myArgs, configIndex)
+    }
+	cfgfile := config.LoadCfgFile(configFile)
+	// VG
+	// cfgfile := config.LoadCfgFile()
 	if len(config.DebugFile) > 0 {
-		debugFile, err := os.OpenFile("config.DebugFile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+		debugFile, err := os.OpenFile(config.DebugFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
 			log.Fatalf("error opening file: %v", err)
 		}
@@ -29,7 +54,7 @@ func main() {
 
 	}
 
-	log.Printf("Using configuration file %s\n", cfgfile)
+	// moved to the end of file log.Printf("Using configuration file %s\n", cfgfile)
 
 	// cannot set values directly for boolean flags
 	if config.DashboardWriteFile {
@@ -73,7 +98,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "nmon2influxdb"
 	app.Usage = "upload NMON stats to InfluxDB database"
-	app.Version = "2.1.7_vg6.3"
+	app.Version = "2.1.7_vg6.4"
 	app.Commands = []*cli.Command{
 		{
 			Name:  "import",
@@ -118,6 +143,11 @@ func main() {
 					Usage: "import log retention",
 					Value: config.ImportLogRetention,
 				},
+				//&cli.StringFlag{
+				//	Name:  "configfile",
+				//	Usage: "config file",
+				//	Destination: &configFile,
+				//},
 			},
 			Action: nmon.Import,
 		},
@@ -278,6 +308,11 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
+			Name:  "configfile",
+			Usage: "config file",
+			Destination: &configFile,
+		},
+		&cli.StringFlag{
 			Name:  "server,s",
 			Usage: "InfluxDB server and port",
 			Value: config.InfluxdbServer,
@@ -330,6 +365,9 @@ func main() {
 	}
 	app.Authors = []*cli.Author{{Name: "Alain Dejoux", Email: "adejoux@djouxtech.net"},
 				    {Name: "Valery Grusdev", Email: "valery@grusdev.com"}}
+
+	log.Printf("%s-%s\n", app.Name, app.Version)				
+	log.Printf("Using configuration file %s\n", cfgfile)
 	app.Run(os.Args)
 
 }

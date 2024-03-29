@@ -4,6 +4,7 @@
 package nmon2influxdblib
 
 import (
+	//"fmt"
 	"bufio"
 	"bytes"
 	"io/ioutil"
@@ -151,6 +152,10 @@ func IsFile(file string) bool {
 	return false
 }
 
+func removeArgs(slice []string, s int) []string {
+    return append(slice[:s], slice[s+2:]...)
+}
+
 //BuildCfgFile creates a default configuration file
 func (config *Config) BuildCfgFile(cfgfile string) {
 	file, err := os.Create(cfgfile)
@@ -166,9 +171,18 @@ func (config *Config) BuildCfgFile(cfgfile string) {
 }
 
 // LoadCfgFile loads current configuration file settings
-func (config *Config) LoadCfgFile() (cfgfile string) {
+func (config *Config) LoadCfgFile(cliCfgFile string) (cfgfile string) {
 
-	cfgfile = GetCfgFile()
+	if cliCfgFile == "" {
+		cfgfile = GetCfgFile()
+	} else {
+		if !IsFile(cliCfgFile) {
+			log.Printf("Error, Use: --config <config file>. config file %s not found\n", cliCfgFile)
+		} else {
+			cfgfile = cliCfgFile
+		}
+	}
+	//fmt.Printf("LoadCfgFile: config file: %s\n", cfgfile)
 
 	//it would be only if no conf file exists. And it will build a configuration file in the home directory
 	if !IsFile(cfgfile) {
@@ -197,7 +211,7 @@ func (config *Config) LoadCfgFile() (cfgfile string) {
 // AddDashboardParams initialize default parameters for dashboard
 func (config *Config) AddDashboardParams() {
 	dfltConfig := InitConfig()
-	dfltConfig.LoadCfgFile()
+	dfltConfig.LoadCfgFile("")
 
 	config.GrafanaAccess = dfltConfig.GrafanaAccess
 	config.GrafanaURL = dfltConfig.GrafanaURL
@@ -211,7 +225,10 @@ func (config *Config) AddDashboardParams() {
 func ParseParameters(c *cli.Context) (config *Config) {
 	config = new(Config)
 	*config = InitConfig()
-	config.LoadCfgFile()
+	config.LoadCfgFile(c.String("configfile"))
+
+	//fmt.Printf("config file: %s\n", c.String("configfile"))
+	//os.Exit(0)
 
 	config.Metric = c.String("metric")
 	config.StatsHost = c.String("statshost")
