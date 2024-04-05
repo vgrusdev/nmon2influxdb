@@ -354,7 +354,7 @@ func (config *Config) GetLogDB() *influxdbclient.InfluxDB {
 		CheckError(err)
 		_, err = influxdb.SetRetentionPolicy("log_retention", config.ImportLogRetention, true)
 		CheckError(err)
-	} else {
+	} else if config.ImportLogRetention != "" {
 		logPolicyName, logPolicyErr := influxdb.GetDefaultRetentionPolicy()
 		CheckError(logPolicyErr)
 		_, err := influxdb.UpdateRetentionPolicy(logPolicyName, config.ImportLogRetention, true)
